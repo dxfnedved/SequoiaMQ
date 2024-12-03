@@ -15,8 +15,15 @@ def job():
         work_flow.prepare()
 
 
-logging.basicConfig(format='%(asctime)s %(message)s', filename='sequoia.log')
-logging.getLogger().setLevel(logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    filename='sequoia.log',
+    filemode='a'
+)
+
+logging.getLogger('RARA_Strategy').setLevel(logging.DEBUG)
+
 settings.init()
 
 if settings.config['cron']:
