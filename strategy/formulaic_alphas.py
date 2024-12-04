@@ -7,59 +7,74 @@ import logging
 # 创建专门的logger
 logger = logging.getLogger('Alpha_Strategy')
 
+# 参数设置
+PRICE_LIMIT = 0.1  # 涨跌停限制 10%
+VOL_THRESHOLD = 2.0  # 成交量放大倍数阈值
+MA_PERIODS = [5, 10, 20]  # 均线周期
+
+def handle_limit_up_down(data):
+    """处理涨跌停限制"""
+    data['涨跌幅'] = data['收盘'].pct_change()
+    data['涨跌幅'] = data['涨跌幅'].clip(-PRICE_LIMIT, PRICE_LIMIT)
+    return data
+
+def handle_suspension(data):
+    """处理停牌"""
+    return data[data['成交量'] > 0].copy()
+
 def calculate_alpha1(data):
-    """Alpha#1: (rank(Ts_ArgMax(SignedPower(((returns < 0) ? stddev(returns, 20) : close), 2.), 5)) - 0.5)"""
-    returns = data['p_change'] / 100
+    """动量因子：结合波动率的趋势跟踪"""
+    returns = data['涨跌幅']
     close = data['收盘']
     
-    # 计算20日收益率标准差
     stddev = returns.rolling(window=20).std()
-    
-    # 构建条件数组
     condition = returns < 0
     result = np.where(condition, stddev, close)
-    
-    # 计算SignedPower
     signed_power = np.sign(result) * (np.abs(result) ** 2)
-    
-    # 计算5日内最大值的位置
     ts_argmax = signed_power.rolling(window=5).apply(np.argmax)
     
     return ts_argmax
 
-def calculate_alpha6(data):
-    """Alpha#6: -1 * correlation(open, volume, 10)"""
-    open_prices = data['开盘']
+def calculate_volume_factor(data):
+    """成交量因子：量价相关性"""
     volume = data['成交量']
+    close = data['收盘']
     
-    corr = open_prices.rolling(window=10).corr(volume)
-    return -1 * corr
+    # 计算成交量变化
+    vol_ma5 = volume.rolling(window=5).mean()
+    vol_ratio = volume / vol_ma5
+    
+    # 计算价格动量
+    price_momentum = close.pct_change(5)
+    
+    return vol_ratio * np.sign(price_momentum)
 
-def calculate_alpha26(data):
-    """Alpha#26: -1 * max(correlation(ts_rank(volume, 5), ts_rank(high, 5), 5), 3)"""
+def calculate_reversal_factor(data):
+    """反转因子：超跌反弹"""
     high = data['最高']
-    volume = data['成交量']
+    low = data['最低']
+    close = data['收盘']
     
-    # 计算5日排名
-    ts_rank_volume = volume.rolling(window=5).apply(lambda x: pd.Series(x).rank().iloc[-1])
-    ts_rank_high = high.rolling(window=5).apply(lambda x: pd.Series(x).rank().iloc[-1])
+    # 计算超跌程度
+    hl_range = (high - low) / low
+    close_position = (close - low) / (high - low)
     
-    # 计算相关系数
-    corr = ts_rank_volume.rolling(window=5).corr(ts_rank_high)
-    return -1 * corr.rolling(window=3).max()
+    return -1 * close_position * hl_range
 
 def check_buy_signals(code, data, end_date=None):
-    """
-    买入信号判断
-    """
-    if len(data) < 30:
-        return False
-    
+    """买入信号判断"""
     try:
-        # 计算Alpha因子
+        # 数据预处理
+        data = handle_limit_up_down(data)
+        data = handle_suspension(data)
+        
+        if len(data) < 30:
+            return False
+        
+        # 计算因子
         data['alpha1'] = calculate_alpha1(data)
-        data['alpha6'] = calculate_alpha6(data)
-        data['alpha26'] = calculate_alpha26(data)
+        data['volume_factor'] = calculate_volume_factor(data)
+        data['reversal_factor'] = calculate_reversal_factor(data)
         
         # 获取最新数据
         current = data.iloc[-1]
@@ -67,34 +82,40 @@ def check_buy_signals(code, data, end_date=None):
         
         # 买入条件
         conditions = [
-            current['alpha1'] > prev['alpha1'],  # Alpha1上升
-            current['alpha6'] < -0.3,            # Alpha6为负相关
-            current['alpha26'] < -0.2,           # Alpha26为负值
-            current['成交量'] > data['成交量'].rolling(window=20).mean().iloc[-1],  # 成交量大于20日均量
-            current['收盘'] > current['开盘'],    # 收盘价大于开盘价
+            current['alpha1'] > prev['alpha1'],  # 动量上升
+            current['volume_factor'] > VOL_THRESHOLD,  # 成交量放大
+            current['reversal_factor'] < -0.2,  # 超跌反弹机会
+            current['成交量'] > data['成交量'].rolling(window=20).mean().iloc[-1],  # 放量
+            all(current['收盘'] > data[f'MA{period}'].iloc[-1] for period in MA_PERIODS)  # 均线多头
         ]
         
         if all(conditions):
+            logger.info(f"Alpha策略 - {code} - 买入信号 "
+                       f"[动量:{current['alpha1']:.2f}, "
+                       f"量价:{current['volume_factor']:.2f}, "
+                       f"反转:{current['reversal_factor']:.2f}]")
             return True
             
     except Exception as e:
-        print(f"处理股票{code}时出错：{str(e)}")
+        logger.error(f"处理股票{code}时出错：{str(e)}")
         return False
     
     return False
 
 def check_sell_signals(code, data, end_date=None):
-    """
-    卖出信号判断
-    """
-    if len(data) < 30:
-        return False
-    
+    """卖出信号判断"""
     try:
-        # 计算Alpha因子
+        # 数据预处理
+        data = handle_limit_up_down(data)
+        data = handle_suspension(data)
+        
+        if len(data) < 30:
+            return False
+        
+        # 计算因子
         data['alpha1'] = calculate_alpha1(data)
-        data['alpha6'] = calculate_alpha6(data)
-        data['alpha26'] = calculate_alpha26(data)
+        data['volume_factor'] = calculate_volume_factor(data)
+        data['reversal_factor'] = calculate_reversal_factor(data)
         
         # 获取最新数据
         current = data.iloc[-1]
@@ -102,50 +123,29 @@ def check_sell_signals(code, data, end_date=None):
         
         # 卖出条件
         conditions = [
-            current['alpha1'] < prev['alpha1'],  # Alpha1下降
-            current['alpha6'] > 0.3,             # Alpha6为正相关
-            current['alpha26'] > 0.2,            # Alpha26为正值
-            current['成交量'] < data['成交量'].rolling(window=20).mean().iloc[-1],  # 成交量小于20日均量
-            current['收盘'] < current['开盘'],     # 收盘价小于开盘价
+            current['alpha1'] < prev['alpha1'],  # 动量下降
+            current['volume_factor'] < 0.5,  # 量能萎缩
+            current['reversal_factor'] > 0.2,  # 上涨乏力
+            current['成交量'] < data['成交量'].rolling(window=20).mean().iloc[-1],  # 缩量
+            any(current['收盘'] < data[f'MA{period}'].iloc[-1] for period in MA_PERIODS)  # 跌破均线
         ]
         
         if any(conditions):  # 满足任一条件即卖出
+            logger.info(f"Alpha策略 - {code} - 卖出信号 "
+                       f"[动量:{current['alpha1']:.2f}, "
+                       f"量价:{current['volume_factor']:.2f}, "
+                       f"反转:{current['reversal_factor']:.2f}]")
             return True
             
     except Exception as e:
-        print(f"处理股票{code}时出错：{str(e)}")
+        logger.error(f"处理股票{code}时出错：{str(e)}")
         return False
     
     return False
 
 def check(code, data, end_date=None):
     """主要的策略判断函数"""
-    if len(data) < 30:
-        return False
+    buy_signal = check_buy_signals(code, data, end_date)
+    sell_signal = check_sell_signals(code, data, end_date)
     
-    try:
-        # 计算Alpha因子
-        data['alpha1'] = calculate_alpha1(data)
-        data['alpha6'] = calculate_alpha6(data)
-        data['alpha26'] = calculate_alpha26(data)
-        
-        # 获取最新数据
-        current = data.iloc[-1]
-        prev = data.iloc[-2]
-        
-        # 检查买入和卖出信号
-        buy_signal = check_buy_signals(code, data, end_date)
-        sell_signal = check_sell_signals(code, data, end_date)
-        
-        # 简洁的日志输出
-        signal_type = "买入" if buy_signal else "卖出" if sell_signal else "观望"
-        logger.info(f"Alpha策略 - {code} - {signal_type} "
-                   f"[A1:{current['alpha1']:.2f}, "
-                   f"A6:{current['alpha6']:.2f}, "
-                   f"A26:{current['alpha26']:.2f}]")
-        
-        return buy_signal
-            
-    except Exception as e:
-        logger.error(f"处理股票{code}时出错：{str(e)}")
-        return False
+    return buy_signal
