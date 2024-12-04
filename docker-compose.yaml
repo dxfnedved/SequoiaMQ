@@ -2,13 +2,24 @@ version: '3'
 
 services:
   stock-analyzer:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     volumes:
       - .:/app
       - ./data:/app/data
+      - ./logs:/app/logs
     environment:
       - TZ=Asia/Shanghai
-    command: python work_flow.py
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    command: python main.py
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200m"
+        max-file: "10"
     depends_on:
       - stock-data-server
       
