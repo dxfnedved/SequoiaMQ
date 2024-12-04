@@ -68,6 +68,10 @@ def fetch(code_name):
             '最低': 'float64'
         })
 
+        # 计算涨跌幅
+        data['p_change'] = ((data['收盘'] - data['收盘'].shift(1)) / data['收盘'].shift(1) * 100).round(2)
+        data['p_change'].fillna(0, inplace=True)  # 填充首行NaN值
+
         # 添加更多技术指标
         for period in [5, 10, 20]:
             data[f'MA{period}'] = tl.MA(data['收盘'].values, timeperiod=period)
