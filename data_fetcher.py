@@ -52,7 +52,7 @@ def fetch(code_name):
         data = ak.stock_zh_a_hist(
             symbol=stock, 
             period="daily", 
-            start_date="20220101", 
+            start_date="20240101", 
             adjust="qfq"
         )
 
@@ -68,13 +68,10 @@ def fetch(code_name):
             '最低': 'float64'
         })
 
-        data['p_change'] = tl.ROC(data['收盘'].values, 1)
-        
-        # 添加技术指标
-        data['MA5'] = tl.MA(data['收盘'].values, timeperiod=5)
-        data['MA20'] = tl.MA(data['收盘'].values, timeperiod=20)
-        data['VOL_MA5'] = tl.MA(data['成交量'].values, timeperiod=5)
-        data['VOL_MA20'] = tl.MA(data['成交量'].values, timeperiod=20)
+        # 添加更多技术指标
+        for period in [5, 10, 20]:
+            data[f'MA{period}'] = tl.MA(data['收盘'].values, timeperiod=period)
+            data[f'VOL_MA{period}'] = tl.MA(data['成交量'].values, timeperiod=period)
         
         # 添加股票名称列
         data['名称'] = code_name[1]
