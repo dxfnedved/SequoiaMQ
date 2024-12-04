@@ -1,0 +1,14 @@
+version: '3'
+
+services:
+  stock-analyzer:
+    build: .
+    volumes:
+      - .:/app
+      - ./data:/app/data
+    environment:
+      - TZ=Asia/Shanghai
+    command: python work_flow.py
+    depends_on:
+      - stock-data-server
+      

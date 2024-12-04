@@ -35,3 +35,9 @@ if settings.config['cron']:
         time.sleep(1)
 else:
     work_flow.prepare()
+
+logger = logging.getLogger('Alpha_Strategy')
+logger.setLevel(logging.INFO)
+fh = logging.FileHandler('alpha_strategy.log')
+fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+logger.addHandler(fh)

@@ -72,7 +72,7 @@ def check(code_name, data, end_date=None):
             return False
             
         # 检查必要的数据列
-        required_columns = ['日期', '最高', '最低']
+        required_columns = ['日期', '最高', '最低', '名称']
         if not all(col in data.columns for col in required_columns):
             logger.error(f"股票 {code_name} 数据缺少必要的列")
             return False
@@ -87,12 +87,14 @@ def check(code_name, data, end_date=None):
         if std_score is None:
             return False
         
+        stock_name = data['名称'].iloc[-1] if '名称' in data.columns else ''
+        
         # 检查买入和卖出信号
         if std_score > BUY_THRESHOLD:
-            logger.info(f"股票 {code_name} RSRS标准分 {std_score:.2f} > {BUY_THRESHOLD} 产生买入信号")
+            logger.info(f"股票 {code_name}-{stock_name} RSRS标准分 {std_score:.2f} > {BUY_THRESHOLD} 产生买入信号")
             return True
         elif std_score < SELL_THRESHOLD:
-            logger.info(f"股票 {code_name} RSRS标准分 {std_score:.2f} < {SELL_THRESHOLD} 产生卖出信号")
+            logger.info(f"股票 {code_name}-{stock_name} RSRS标准分 {std_score:.2f} < {SELL_THRESHOLD} 产生卖出信号")
             return False
             
         return False
