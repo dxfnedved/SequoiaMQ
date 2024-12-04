@@ -16,7 +16,7 @@ import akshare as ak
 import push
 import logging
 import time
-import datetime
+from datetime import datetime
 from collections import defaultdict
 import os
 import pandas as pd
@@ -169,6 +169,16 @@ class StrategyAnalyzer:
 
 
 def prepare():
+    """
+    Prepare the workflow
+    """
+    if datetime.now().weekday() == 0:
+        # Monday, fetch weekly data
+        stocks = data_fetcher.fetch_weekly_data()
+    else:
+        # Other days, fetch daily data
+        stocks = data_fetcher.fetch_daily_data()
+    
     logging.info("************************ process start ***************************************")
     all_data = ak.stock_zh_a_spot_em()
     
@@ -192,7 +202,7 @@ def prepare():
         'Alpha因子策略': formulaic_alphas.check,
     }
 
-    if datetime.datetime.now().weekday() == 0:
+    if datetime.now().weekday() == 0:
         strategies['均线多头'] = keep_increasing.check
 
     process(stocks, strategies)

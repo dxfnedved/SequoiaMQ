@@ -130,3 +130,15 @@ def run(stocks):
           f"{Fore.RED}失败{total_stocks - success_count}只{Style.RESET_ALL}")
     
     return stocks_data
+
+def fetch_daily_data():
+    """获取日线数据"""
+    all_data = ak.stock_zh_a_spot_em()
+    stocks = list(zip(all_data['代码'].tolist(), all_data['名称'].tolist()))
+    return run(stocks)
+
+def fetch_weekly_data():
+    """获取周线数据"""
+    all_data = ak.stock_zh_a_spot_em()
+    stocks = list(zip(all_data['代码'].tolist(), all_data['名称'].tolist()))
+    return run(stocks)
