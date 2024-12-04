@@ -22,6 +22,12 @@ import os
 import pandas as pd
 
 
+def ensure_dir_exists(directory):
+    """Create directory if it doesn't exist"""
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+
 class StrategyAnalyzer:
     def __init__(self, results_dir="results"):
         self.results_dir = results_dir
