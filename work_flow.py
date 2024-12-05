@@ -160,6 +160,32 @@ class StrategyAnalyzer:
         with open(html_path, 'w', encoding='utf-8') as f:
             f.write(html_content)
     
+    def _market_stats_to_html(self, stats):
+        """将市场统计数据转换为HTML表格"""
+        if not stats:
+            return "<p>无市场统计数据</p>"
+            
+        html = "<table>"
+        html += "<tr><th>指标</th><th>数值</th></tr>"
+        for key, value in stats.items():
+            html += f"<tr><td>{key}</td><td>{value}</td></tr>"
+        html += "</table>"
+        return html
+    
+    def _confluence_to_html(self, confluence_df):
+        """将策略共振数据转换为HTML表格"""
+        if confluence_df is None or confluence_df.empty:
+            return "<p>无策略共振数据</p>"
+            
+        return confluence_df.to_html(index=False, classes='dataframe')
+    
+    def _signals_to_html(self, signals_df):
+        """将策略信号数据转换为HTML表格"""
+        if signals_df is None or signals_df.empty:
+            return "<p>无策略信号数据</p>"
+            
+        return signals_df.to_html(index=False, classes='dataframe')
+    
     def _log_confluence_summary(self, strategy_counts):
         """记录共振统计���"""
         logging.info("=== 策略共振统计 ===")

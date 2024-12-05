@@ -44,19 +44,24 @@ def calculate_rsrs_std_score(data, period=OBSERVATION_PERIOD, min_periods=MIN_PE
         for i in range(len(data) - min_periods + 1):
             window_data = data.iloc[i:i+min_periods]
             beta = calculate_beta(window_data)
-            betas.append(beta)
+            if beta is not None:  # 只添加有效的beta值
+                betas.append(beta)
+            else:
+                betas.append(np.nan)  # 使用NaN代替None
         
-        # 将前min_periods-1个位置的beta设为None
-        betas = [None] * (min_periods-1) + betas
+        # 将前min_periods-1个位置的beta设为NaN
+        betas = [np.nan] * (min_periods-1) + betas
         
         # 转换为Series以便计算移动平均和标准差
-        beta_series = pd.Series(betas)
-        beta_mean = beta_series.rolling(period, min_periods=min_periods).mean()
-        beta_std = beta_series.rolling(period, min_periods=min_periods).std()
+        beta_series = pd.Series(betas, index=data.index[:len(betas)])
+        
+        # 使用pandas的rolling方法
+        beta_mean = beta_series.rolling(window=period, min_periods=min_periods).mean()
+        beta_std = beta_series.rolling(window=period, min_periods=min_periods).std()
         
         # 计算标准分
-        latest_beta = betas[-1]
-        if latest_beta is None or pd.isna(beta_mean.iloc[-1]) or pd.isna(beta_std.iloc[-1]) or beta_std.iloc[-1] == 0:
+        latest_beta = beta_series.iloc[-1]
+        if pd.isna(latest_beta) or pd.isna(beta_mean.iloc[-1]) or pd.isna(beta_std.iloc[-1]) or beta_std.iloc[-1] == 0:
             return None
             
         std_score = (latest_beta - beta_mean.iloc[-1]) / beta_std.iloc[-1]
