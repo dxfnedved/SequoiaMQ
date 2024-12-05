@@ -20,10 +20,10 @@ colorama.init()
 # 配置重试参数
 MAX_RETRIES = 5
 MIN_DELAY = 3
-MAX_DELAY = 10
+MAX_DELAY = 15
 
 def retry_on_network_error(retries=MAX_RETRIES, min_delay=MIN_DELAY, max_delay=MAX_DELAY):
-    """增强的重试装饰器"""
+    """重试装饰器"""
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -39,8 +39,8 @@ def retry_on_network_error(retries=MAX_RETRIES, min_delay=MIN_DELAY, max_delay=M
                               file=sys.stderr)
                         return None
                     
-                    # 使用指数退���算法计算延迟时间
-                    delay = min(max_delay, min_delay * (2 ** attempt)) + random.uniform(0, 1)
+                    # 使用指数退避算法计算延迟时间
+                    delay = min(max_delay, min_delay * (2 ** attempt)) + random.uniform(0, 2)
                     print(f"{Fore.YELLOW}\r正在重试股票 {stock_code}-{stock_name} 数据获取，第{attempt + 1}次"
                           f"（等待{delay:.1f}秒）...{Style.RESET_ALL}", 
                           end="", file=sys.stderr)
@@ -52,10 +52,6 @@ def retry_on_network_error(retries=MAX_RETRIES, min_delay=MIN_DELAY, max_delay=M
 @retry_on_network_error()
 def fetch(code_name):
     stock = code_name[0]
-    
-    # 过滤科创板股票
-    if stock.startswith('68'):
-        return None
         
     try:
         # 使用带有超时设置的请求
@@ -153,14 +149,44 @@ def run(stocks):
     
     return stocks_data
 
+def filter_stocks(stocks):
+    """过滤股票列表"""
+    filtered = []
+    for stock in stocks:
+        code, name = stock
+        # 过滤科创板
+        if code.startswith('68'):
+            continue
+        # 过滤ST和退市股票
+        if 'ST' in name or '退' in name:
+            continue
+        filtered.append(stock)
+    return filtered
+
+def fetch_stock_data():
+    """统一获取股票数据"""
+    try:
+        # 获取A股所有股票信息
+        all_data = ak.stock_zh_a_spot_em()
+        
+        # 创建股票列表
+        subset = all_data[['代码', '名称']]
+        stocks = [tuple(x) for x in subset.values]
+        
+        # 过滤股票
+        stocks = filter_stocks(stocks)
+        
+        print(f"\n{Fore.CYAN}开始获取{len(stocks)}只股票数据...{Style.RESET_ALL}")
+        return run(stocks)
+        
+    except Exception as e:
+        logging.logger.error(f"获取股票列表失败: {str(e)}")
+        return {}
+
 def fetch_daily_data():
-    """获取日线数据"""
-    all_data = ak.stock_zh_a_spot_em()
-    stocks = list(zip(all_data['代码'].tolist(), all_data['名称'].tolist()))
-    return run(stocks)
+    """获取日线数据（保持兼容）"""
+    return fetch_stock_data()
 
 def fetch_weekly_data():
-    """获取周线数据"""
-    all_data = ak.stock_zh_a_spot_em()
-    stocks = list(zip(all_data['代码'].tolist(), all_data['名称'].tolist()))
-    return run(stocks)
+    """获取周线数据（保持兼容）"""
+    return fetch_stock_data()
