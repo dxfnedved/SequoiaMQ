@@ -28,12 +28,90 @@ def ensure_dir_exists(directory):
         os.makedirs(directory)
 
 
-class StrategyAnalyzer:
-    def __init__(self, results_dir="results"):
-        self.results_dir = results_dir
+class ResultManager:
+    def __init__(self, base_dir="results"):
+        self.base_dir = base_dir
         self.date_str = datetime.now().strftime('%Y%m%d')
-        ensure_dir_exists(results_dir)
+        self.time_str = datetime.now().strftime('%H%M%S')
         
+        # 创建日期目录
+        self.date_dir = os.path.join(base_dir, self.date_str)
+        ensure_dir_exists(self.date_dir)
+        
+        # 创建本次执行的时间目录
+        self.result_dir = os.path.join(self.date_dir, self.time_str)
+        ensure_dir_exists(self.result_dir)
+        
+        # 设置日志
+        self.setup_logging()
+    
+    def setup_logging(self):
+        """设置日志系统"""
+        # 创建日志目录
+        log_base = "logs"
+        ensure_dir_exists(log_base)
+        log_date_dir = os.path.join(log_base, self.date_str)
+        ensure_dir_exists(log_date_dir)
+        log_time_dir = os.path.join(log_date_dir, self.time_str)
+        ensure_dir_exists(log_time_dir)
+        
+        # 设置日志文件
+        log_file = os.path.join(log_time_dir, "execution.log")
+        
+        # 配置根日志记录器
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_file, encoding='utf-8'),
+                logging.StreamHandler()  # 同时输出到控制台
+            ]
+        )
+        
+        # 配置策略专用日志记录器
+        strategy_logger = logging.getLogger('RARA_Strategy')
+        strategy_logger.setLevel(logging.DEBUG)
+        strategy_log_file = os.path.join(log_time_dir, "strategy_RARA.log")
+        fh = logging.FileHandler(strategy_log_file, encoding='utf-8')
+        fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        strategy_logger.addHandler(fh)
+        
+        # 配置Alpha策略日志记录器
+        alpha_logger = logging.getLogger('Alpha_Strategy')
+        alpha_logger.setLevel(logging.INFO)
+        alpha_log_file = os.path.join(log_time_dir, "strategy_alpha.log")
+        fh = logging.FileHandler(alpha_log_file, encoding='utf-8')
+        fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        alpha_logger.addHandler(fh)
+    
+    def save_strategy_signals(self, stock_signals):
+        """保存个股策略信号"""
+        results = []
+        for code, signals in stock_signals.items():
+            stock_code, stock_name = code
+            for strategy, signal in signals:
+                results.append({
+                    '日期': self.date_str,
+                    '股票代码': stock_code,
+                    '股票名称': stock_name,
+                    '策略': strategy,
+                    '信号': signal
+                })
+        
+        if results:
+            df = pd.DataFrame(results)
+            file_path = os.path.join(self.result_dir, 'strategy_signals.csv')
+            df.to_csv(file_path, index=False, encoding='utf-8-sig')
+            logging.info(f"策略信号已保存到: {file_path}")
+            return df
+        return None
+    
+    def save_market_stats(self, stats_data):
+        """保存市场统计数据"""
+        file_path = os.path.join(self.result_dir, 'market_stats.csv')
+        pd.DataFrame([stats_data]).to_csv(file_path, index=False, encoding='utf-8-sig')
+        logging.info(f"市场统计数据已保存到: {file_path}")
+    
     def analyze_strategy_confluence(self, stock_signals):
         """分析策略共振情况"""
         confluence_data = defaultdict(list)
@@ -59,7 +137,7 @@ class StrategyAnalyzer:
             df = pd.DataFrame(confluence_data)
             # 按触发策略数降序排序
             df = df.sort_values('触发策略数', ascending=False)
-            file_path = os.path.join(self.results_dir, f'strategy_confluence_{self.date_str}.csv')
+            file_path = os.path.join(self.result_dir, 'strategy_confluence.csv')
             df.to_csv(file_path, index=False, encoding='utf-8-sig')
             
             # 保存共振统计信息
@@ -69,7 +147,7 @@ class StrategyAnalyzer:
                 '股票数量': list(strategy_counts.values())
             }
             stats_df = pd.DataFrame(stats_data)
-            stats_file = os.path.join(self.results_dir, f'confluence_statistics_{self.date_str}.csv')
+            stats_file = os.path.join(self.result_dir, 'confluence_statistics.csv')
             stats_df.to_csv(stats_file, index=False, encoding='utf-8-sig')
             
             # 记录日志
@@ -78,110 +156,6 @@ class StrategyAnalyzer:
             
             return df
         return None
-    
-    def save_strategy_signals(self, stock_signals):
-        """保存个股策略信号"""
-        results = []
-        for code, signals in stock_signals.items():
-            stock_code, stock_name = code
-            for strategy, signal in signals:
-                results.append({
-                    '日期': self.date_str,
-                    '股票代码': stock_code,
-                    '股票名称': stock_name,
-                    '策略': strategy,
-                    '信号': signal
-                })
-        
-        if results:
-            df = pd.DataFrame(results)
-            file_path = os.path.join(self.results_dir, f'strategy_signals_{self.date_str}.csv')
-            df.to_csv(file_path, index=False, encoding='utf-8-sig')
-            logging.info(f"策略信号已保存到: {file_path}")
-            return df
-        return None
-    
-    def save_market_stats(self, stats_data):
-        """保存市场统计数据"""
-        file_path = os.path.join(self.results_dir, f'market_stats_{self.date_str}.csv')
-        pd.DataFrame([stats_data]).to_csv(file_path, index=False, encoding='utf-8-sig')
-        logging.info(f"市场统计数据已保存到: {file_path}")
-    
-    def generate_daily_report(self, stock_signals, market_stats):
-        """生成每日策略报告"""
-        report_data = {
-            '日期': self.date_str,
-            '市场统计': market_stats,
-            '策略信号': self.save_strategy_signals(stock_signals),
-            '策略共振': self.analyze_strategy_confluence(stock_signals)
-        }
-        
-        # 生成HTML报告
-        html_path = os.path.join(self.results_dir, f'daily_report_{self.date_str}.html')
-        self._generate_html_report(report_data, html_path)
-        logging.info(f"每日报告已生成: {html_path}")
-    
-    def _generate_html_report(self, report_data, html_path):
-        """生成HTML格式的报告"""
-        html_content = f"""
-        <html>
-        <head>
-            <title>策略分析报告 - {self.date_str}</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; }}
-                th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-                th {{ background-color: #f2f2f2; }}
-                .section {{ margin-bottom: 30px; }}
-                h2 {{ color: #333; }}
-            </style>
-        </head>
-        <body>
-            <h1>策略分析报告 - {self.date_str}</h1>
-            
-            <div class="section">
-                <h2>市场概况</h2>
-                {self._market_stats_to_html(report_data['市场统计'])}
-            </div>
-            
-            <div class="section">
-                <h2>策略共振分析</h2>
-                {self._confluence_to_html(report_data['策略共振'])}
-            </div>
-            
-            <div class="section">
-                <h2>个股策略信号</h2>
-                {self._signals_to_html(report_data['策略信号'])}
-            </div>
-        </body>
-        </html>
-        """
-        
-        with open(html_path, 'w', encoding='utf-8') as f:
-            f.write(html_content)
-    
-    def _signals_to_html(self, signals_df):
-        """将策略信号数据转换为HTML表格"""
-        if signals_df is None or (isinstance(signals_df, pd.DataFrame) and signals_df.empty):
-            return "<p>无策略信号数据</p>"
-        return signals_df.to_html(index=False, classes='dataframe')
-    
-    def _confluence_to_html(self, confluence_df):
-        """将策略共振数据转换为HTML表格"""
-        if confluence_df is None or (isinstance(confluence_df, pd.DataFrame) and confluence_df.empty):
-            return "<p>无策略共振数据</p>"
-        return confluence_df.to_html(index=False, classes='dataframe')
-    
-    def _market_stats_to_html(self, stats):
-        """将市场统计数据转换为HTML表格"""
-        if not stats or not isinstance(stats, dict):
-            return "<p>无市场统计数据</p>"
-        html = "<table>"
-        html += "<tr><th>指标</th><th>数值</th></tr>"
-        for key, value in stats.items():
-            html += f"<tr><td>{key}</td><td>{value}</td></tr>"
-        html += "</table>"
-        return html
     
     def _log_confluence_summary(self, strategy_counts):
         """记录共振统计摘要"""
@@ -234,7 +208,7 @@ def prepare():
 
 
 def process(stocks, strategies):
-    analyzer = StrategyAnalyzer()
+    result_mgr = ResultManager()
     stocks_data = data_fetcher.run(stocks)
     stock_signals = defaultdict(list)
     
@@ -247,8 +221,10 @@ def process(stocks, strategies):
     # 生成市场统计数据
     market_stats = get_market_stats(stocks_data)
     
-    # 生成完整报告
-    analyzer.generate_daily_report(stock_signals, market_stats)
+    # 保存分析结果
+    result_mgr.save_market_stats(market_stats)
+    result_mgr.save_strategy_signals(stock_signals)
+    result_mgr.analyze_strategy_confluence(stock_signals)
 
 
 def check_strategy(stocks_data, strategy, strategy_func):
