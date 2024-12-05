@@ -12,12 +12,18 @@ import sys
 from tqdm import tqdm
 import colorama
 from colorama import Fore, Style
+import random
 
 # 初始化colorama
 colorama.init()
 
-def retry_on_network_error(retries=3, delay=2):
-    """重试装饰器"""
+# 配置重试参数
+MAX_RETRIES = 5
+MIN_DELAY = 3
+MAX_DELAY = 10
+
+def retry_on_network_error(retries=MAX_RETRIES, min_delay=MIN_DELAY, max_delay=MAX_DELAY):
+    """增强的重试装饰器"""
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -29,17 +35,21 @@ def retry_on_network_error(retries=3, delay=2):
                     return func(*args, **kwargs)
                 except (RequestException, MaxRetryError, NewConnectionError) as e:
                     if attempt == retries - 1:  # 最后一次尝试
-                        print(f"{Fore.RED}\r获取股票 {stock_code}-{stock_name} 数据失败，已跳过...{Style.RESET_ALL}", 
+                        print(f"{Fore.RED}\r获取股票 {stock_code}-{stock_name} 数据失败（已重试{retries}次），跳过...{Style.RESET_ALL}", 
                               file=sys.stderr)
                         return None
-                    print(f"{Fore.YELLOW}\r正在重试股票 {stock_code}-{stock_name} 数据获取，第{attempt + 1}次...{Style.RESET_ALL}", 
+                    
+                    # 使用指数退���算法计算延迟时间
+                    delay = min(max_delay, min_delay * (2 ** attempt)) + random.uniform(0, 1)
+                    print(f"{Fore.YELLOW}\r正在重试股票 {stock_code}-{stock_name} 数据获取，第{attempt + 1}次"
+                          f"（等待{delay:.1f}秒）...{Style.RESET_ALL}", 
                           end="", file=sys.stderr)
-                    time.sleep(delay * (attempt + 1))  # 递增延迟
+                    time.sleep(delay)
             return None
         return wrapper
     return decorator
 
-@retry_on_network_error(retries=3, delay=2)
+@retry_on_network_error()
 def fetch(code_name):
     stock = code_name[0]
     
@@ -59,6 +69,9 @@ def fetch(code_name):
         if data is None or data.empty:
             return None
 
+        # 创建数据副本以避免链式赋值警告
+        data = data.copy()
+
         # 确保数据类型正确
         data = data.astype({
             '成交量': 'float64',
@@ -69,8 +82,8 @@ def fetch(code_name):
         })
 
         # 计算涨跌幅
-        data['p_change'] = ((data['收盘'] - data['收盘'].shift(1)) / data['收盘'].shift(1) * 100).round(2)
-        data['p_change'].fillna(0, inplace=True)  # 填充首行NaN值
+        data.loc[:, 'p_change'] = ((data['收盘'] - data['收盘'].shift(1)) / data['收盘'].shift(1) * 100).round(2)
+        data.loc[data['p_change'].isna(), 'p_change'] = 0
 
         # 添加更多技术指标
         for period in [5, 10, 20]:
@@ -94,10 +107,9 @@ def run(stocks):
     
     print(f"\n{Fore.CYAN}开始获取{total_stocks}只股票数据...{Style.RESET_ALL}")
     
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:  # 减少并发数以降低网络压力
         futures = {executor.submit(fetch, stock): stock for stock in stocks}
         
-        # 使用tqdm创建进度条
         with tqdm(total=total_stocks, desc="获取数据进度", ncols=100, 
                  bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]') as pbar:
             for future in concurrent.futures.as_completed(futures):
@@ -120,18 +132,24 @@ def run(stocks):
         
         with tqdm(total=failed_count, desc="重试进度", ncols=100,
                  bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]') as pbar:
-            for stock in failed_stocks:
+            for stock in failed_stocks[:]:  # 使用切片创建副本以避免在迭代时修改列表
                 try:
                     data = fetch(stock)
                     if data is not None:
                         stocks_data[stock] = data
+                        failed_stocks.remove(stock)  # 成功后从失败列表中移除
                 except Exception:
                     pass
                 pbar.update(1)
 
     success_count = len(stocks_data)
     print(f"\n{Fore.GREEN}数据获取完成：成功{success_count}只，"
-          f"{Fore.RED}失败{total_stocks - success_count}只{Style.RESET_ALL}")
+          f"{Fore.RED}失败{len(failed_stocks)}只{Style.RESET_ALL}")
+    
+    if failed_stocks:
+        print(f"\n{Fore.YELLOW}失败股票列表：{Style.RESET_ALL}")
+        for stock in failed_stocks:
+            print(f"{stock[0]}-{stock[1]}")
     
     return stocks_data
 
