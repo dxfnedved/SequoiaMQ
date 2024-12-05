@@ -126,7 +126,7 @@ class StrategyAnalyzer:
         html_content = f"""
         <html>
         <head>
-            <title>策略��析报告 - {self.date_str}</title>
+            <title>策略分析报告 - {self.date_str}</title>
             <style>
                 body {{ font-family: Arial, sans-serif; margin: 20px; }}
                 table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; }}
@@ -160,11 +160,22 @@ class StrategyAnalyzer:
         with open(html_path, 'w', encoding='utf-8') as f:
             f.write(html_content)
     
+    def _signals_to_html(self, signals_df):
+        """将策略信号数据转换为HTML表格"""
+        if signals_df is None or (isinstance(signals_df, pd.DataFrame) and signals_df.empty):
+            return "<p>无策略信号数据</p>"
+        return signals_df.to_html(index=False, classes='dataframe')
+    
+    def _confluence_to_html(self, confluence_df):
+        """将策略共振数据转换为HTML表格"""
+        if confluence_df is None or (isinstance(confluence_df, pd.DataFrame) and confluence_df.empty):
+            return "<p>无策略共振数据</p>"
+        return confluence_df.to_html(index=False, classes='dataframe')
+    
     def _market_stats_to_html(self, stats):
         """将市场统计数据转换为HTML表格"""
-        if not stats:
+        if not stats or not isinstance(stats, dict):
             return "<p>无市场统计数据</p>"
-            
         html = "<table>"
         html += "<tr><th>指标</th><th>数值</th></tr>"
         for key, value in stats.items():
@@ -172,85 +183,35 @@ class StrategyAnalyzer:
         html += "</table>"
         return html
     
-    def _confluence_to_html(self, confluence_df):
-        """将策略共振数据转换为HTML表格"""
-        if confluence_df is None or confluence_df.empty:
-            return "<p>无策略共振数据</p>"
-            
-        return confluence_df.to_html(index=False, classes='dataframe')
-    
-    def _signals_to_html(self, signals_df):
-        """将策略信号数据转换为HTML表格"""
-        if signals_df is None or signals_df.empty:
-            return "<p>无策略信号数据</p>"
-            
-        return signals_df.to_html(index=False, classes='dataframe')
-    
     def _log_confluence_summary(self, strategy_counts):
-        """记录共振统计���"""
+        """记录共振统计摘要"""
         logging.info("=== 策略共振统计 ===")
         for count, num_stocks in sorted(strategy_counts.items(), reverse=True):
             logging.info(f"触发{count}个策略的股票数量: {num_stocks}")
         logging.info("==================")
-    
-    def _market_stats_to_html(self, stats):
-        """将市场统计数据转换为HTML格式"""
-        if not stats:
-            return "<p>无市场统计数据</p>"
-            
-        html = "<h2>市场统计</h2>"
-        html += "<table border='1'>"
-        html += "<tr><th>指标</th><th>数值</th></tr>"
-        
-        for key, value in stats.items():
-            html += f"<tr><td>{key}</td><td>{value}</td></tr>"
-            
-        html += "</table>"
-        return html
-    
-    def _confluence_to_html(self, confluence_df):
-        """将策略共振数据转换为HTML格式"""
-        if confluence_df is None or confluence_df.empty:
-            return "<p>无策略共振数据</p>"
-        
-        html = "<h2>策略共振数据</h2>"
-        html += "<table border='1'>"
-        html += "<tr><th>日期</th><th>股票代码</th><th>股票名称</th><th>触发策略数</th><th>触发策略列表</th></tr>"
-        
-        for _, row in confluence_df.iterrows():
-            html += f"<tr><td>{row['日期']}</td><td>{row['股票代码']}</td><td>{row['股票名称']}</td><td>{row['触发策略数']}</td><td>{row['触发策略列表']}</td></tr>"
-        
-        html += "</table>"
-        return html
-    
-    def _signals_to_html(self, signals):
-        """将策略信号转换为HTML格式"""
-        if not signals:
-            return "<p>无策略信号</p>"
-            
-        html = "<h2>策略信号</h2>"
-        html += "<table border='1'>"
-        html += "<tr><th>股票代码</th><th>股票名称</th><th>触发策略</th></tr>"
-        
-        for code, signal_list in signals.items():
-            stock_code, stock_name = code
-            strategies = [s[0] for s in signal_list if s[1] == "买入"]
-            if strategies:
-                html += f"<tr><td>{stock_code}</td><td>{stock_name}</td><td>{', '.join(strategies)}</td></tr>"
-            
-        html += "</table>"
-        return html
 
 
 def prepare():
     """
     Prepare the workflow
     """
-    # 统一获取数据，不再区分日线和周线
-    stocks = data_fetcher.fetch_stock_data()
+    if datetime.now().weekday() == 0:
+        # Monday, fetch weekly data
+        stocks = data_fetcher.fetch_weekly_data()
+    else:
+        # Other days, fetch daily data
+        stocks = data_fetcher.fetch_daily_data()
     
     logging.info("************************ process start ***************************************")
+    all_data = ak.stock_zh_a_spot_em()
     
+    # 过滤科创板股票
+    all_data = all_data[~all_data['代码'].str.startswith('68')]
+    
+    subset = all_data[['代码', '名称']]
+    stocks = [tuple(x) for x in subset.values]
+    statistics(all_data, stocks)
+
     strategies = {
         '放量上涨': enter.check_volume,
         '均线多头': keep_increasing.check,
@@ -264,9 +225,13 @@ def prepare():
         'Alpha因子策略': formulaic_alphas.check,
     }
 
+    if datetime.now().weekday() == 0:
+        strategies['均线多头'] = keep_increasing.check
+
     process(stocks, strategies)
-    
+
     logging.info("************************ process   end ***************************************")
+
 
 def process(stocks, strategies):
     analyzer = StrategyAnalyzer()
@@ -284,6 +249,7 @@ def process(stocks, strategies):
     
     # 生成完整报告
     analyzer.generate_daily_report(stock_signals, market_stats)
+
 
 def check_strategy(stocks_data, strategy, strategy_func):
     """检查单个策略的信号"""
@@ -303,6 +269,7 @@ def check_strategy(stocks_data, strategy, strategy_func):
             results[code] = "错误"
     
     return results
+
 
 def get_market_stats(stocks_data):
     """获取市场统计数据"""
@@ -331,6 +298,7 @@ def get_market_stats(stocks_data):
                 stats['跌幅大于5%数量'] += 1
     
     return stats
+
 
 def statistics(all_data, stocks):
     limitup = len(all_data.loc[(all_data['涨跌幅'] >= 9.5)])
