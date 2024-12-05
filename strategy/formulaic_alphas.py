@@ -24,13 +24,13 @@ def handle_suspension(data):
 
 def calculate_alpha1(data):
     """动量因子：结合波动率的趋势跟踪"""
-    returns = data['涨跌幅']
-    close = data['收盘']
+    returns = pd.Series(data['涨跌幅'])
+    close = pd.Series(data['收盘'])
     
     stddev = returns.rolling(window=20).std()
     condition = returns < 0
-    result = np.where(condition, stddev, close)
-    signed_power = np.sign(result) * (np.abs(result) ** 2)
+    result = pd.Series(np.where(condition, stddev, close))
+    signed_power = pd.Series(np.sign(result) * (np.abs(result) ** 2))
     ts_argmax = signed_power.rolling(window=5).apply(np.argmax)
     
     return ts_argmax
