@@ -11,3 +11,4 @@ config.yaml
 logs/*
 *.csv
 *.log
+results
