@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y \
     libffi-dev \
     libssl-dev \
     make \
+    qt6-base-dev \
+    libgl1-mesa-glx \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装Python依赖
@@ -28,5 +30,9 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 # 设置Python环境变量
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+ENV QT_QPA_PLATFORM=offscreen
 
-CMD ["python", "main.py"] 
+# 设置默认命令
+ENTRYPOINT ["python", "main.py"]
+# 可以通过传递 --gui 参数启动GUI模式
+CMD [] 

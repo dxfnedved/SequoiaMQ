@@ -12,6 +12,8 @@ from strategy import keep_increasing
 from strategy import high_tight_flag
 from strategy import formulaic_alphas
 from strategy import RARA
+from strategy import alpha_factors101
+from strategy import alpha_factors191
 import akshare as ak
 import push
 import logging
@@ -197,6 +199,8 @@ def prepare():
         '放量跌停': climax_limitdown.check,
         'RARA策略': RARA.check,
         'Alpha因子策略': formulaic_alphas.check,
+        'Alpha101策略': alpha_factors101.check,
+        'Alpha191策略': alpha_factors191.check,
     }
 
     if datetime.now().weekday() == 0:
