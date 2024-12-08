@@ -22,297 +22,206 @@ from datetime import datetime
 from collections import defaultdict
 import os
 import pandas as pd
+import numpy as np
+import traceback
+from logger_manager import LoggerManager
 
+class WorkFlow:
+    def __init__(self):
+        self.logger_manager = LoggerManager()
+        self.logger = self.logger_manager.get_logger("work_flow")
 
-def ensure_dir_exists(directory):
-    """Create directory if it doesn't exist"""
-    if not os.path.exists(directory):
-        os.makedirs(directory)
+    def ensure_dir_exists(self, path):
+        """确保目录存在"""
+        if not os.path.exists(path):
+            os.makedirs(path)
 
-
-class StrategyAnalyzer:
-    def __init__(self, results_dir="results"):
-        self.results_dir = results_dir
-        self.date_str = datetime.now().strftime('%Y%m%d')
-        ensure_dir_exists(results_dir)
-        
-    def analyze_strategy_confluence(self, stock_signals):
-        """分析策略共振情况"""
-        confluence_data = defaultdict(list)
-        strategy_counts = defaultdict(int)
-        
-        # 统计每只股票的策略触发情况
-        for code, signals in stock_signals.items():
-            stock_code, stock_name = code
-            triggered_strategies = [strategy for strategy, signal in signals if signal == "买入"]
-            
-            if triggered_strategies:  # 只记录有买入信号的股票
-                strategy_count = len(triggered_strategies)
-                strategy_counts[strategy_count] += 1
-                
-                confluence_data['日期'].append(self.date_str)
-                confluence_data['股票代码'].append(stock_code)
-                confluence_data['股票名称'].append(stock_name)
-                confluence_data['触发策略数'].append(strategy_count)
-                confluence_data['触发策略列表'].append(', '.join(triggered_strategies))
-        
-        # 保存共振分析结果
-        if confluence_data:
-            df = pd.DataFrame(confluence_data)
-            # 按触发策略数降序排序
-            df = df.sort_values('触发策略数', ascending=False)
-            file_path = os.path.join(self.results_dir, f'strategy_confluence_{self.date_str}.csv')
-            df.to_csv(file_path, index=False, encoding='utf-8-sig')
-            
-            # 保存共振统计信息
-            stats_data = {
-                '日期': [self.date_str] * len(strategy_counts),
-                '触发策略数': list(strategy_counts.keys()),
-                '股票数量': list(strategy_counts.values())
-            }
-            stats_df = pd.DataFrame(stats_data)
-            stats_file = os.path.join(self.results_dir, f'confluence_statistics_{self.date_str}.csv')
-            stats_df.to_csv(stats_file, index=False, encoding='utf-8-sig')
-            
-            # 记录日志
-            logging.info(f"策略共振分析已保存到: {file_path}")
-            self._log_confluence_summary(strategy_counts)
-            
-            return df
-        return None
-    
-    def save_strategy_signals(self, stock_signals):
-        """保存个股策略信号"""
-        results = []
-        for code, signals in stock_signals.items():
-            stock_code, stock_name = code
-            for strategy, signal in signals:
-                results.append({
-                    '日期': self.date_str,
-                    '股票代码': stock_code,
-                    '股票名称': stock_name,
-                    '策略': strategy,
-                    '信号': signal
-                })
-        
-        if results:
-            df = pd.DataFrame(results)
-            file_path = os.path.join(self.results_dir, f'strategy_signals_{self.date_str}.csv')
-            df.to_csv(file_path, index=False, encoding='utf-8-sig')
-            logging.info(f"策略信号已保存到: {file_path}")
-            return df
-        return None
-    
-    def save_market_stats(self, stats_data):
-        """保存市场统计数据"""
-        file_path = os.path.join(self.results_dir, f'market_stats_{self.date_str}.csv')
-        pd.DataFrame([stats_data]).to_csv(file_path, index=False, encoding='utf-8-sig')
-        logging.info(f"市场统计数据已保存到: {file_path}")
-    
-    def generate_daily_report(self, stock_signals, market_stats):
-        """生成每日策略报告"""
-        report_data = {
-            '日期': self.date_str,
-            '市场统计': market_stats,
-            '策略信号': self.save_strategy_signals(stock_signals),
-            '策略共振': self.analyze_strategy_confluence(stock_signals)
-        }
-        
-        # 生成HTML报告
-        html_path = os.path.join(self.results_dir, f'daily_report_{self.date_str}.html')
-        self._generate_html_report(report_data, html_path)
-        logging.info(f"每日报告已生成: {html_path}")
-    
-    def _generate_html_report(self, report_data, html_path):
-        """生成HTML格式的报告"""
-        html_content = f"""
-        <html>
-        <head>
-            <title>策略分析报告 - {self.date_str}</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; }}
-                th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-                th {{ background-color: #f2f2f2; }}
-                .section {{ margin-bottom: 30px; }}
-                h2 {{ color: #333; }}
-            </style>
-        </head>
-        <body>
-            <h1>策略分析报告 - {self.date_str}</h1>
-            
-            <div class="section">
-                <h2>市场概况</h2>
-                {self._market_stats_to_html(report_data['市场统计'])}
-            </div>
-            
-            <div class="section">
-                <h2>策略共振分析</h2>
-                {self._confluence_to_html(report_data['策略共振'])}
-            </div>
-            
-            <div class="section">
-                <h2>个股策略信号</h2>
-                {self._signals_to_html(report_data['策略信号'])}
-            </div>
-        </body>
-        </html>
-        """
-        
-        with open(html_path, 'w', encoding='utf-8') as f:
-            f.write(html_content)
-    
-    def _signals_to_html(self, signals_df):
-        """将策略信号数据转换为HTML表格"""
-        if signals_df is None or (isinstance(signals_df, pd.DataFrame) and signals_df.empty):
-            return "<p>无策略信号数据</p>"
-        return signals_df.to_html(index=False, classes='dataframe')
-    
-    def _confluence_to_html(self, confluence_df):
-        """将策略共振数据转换为HTML表格"""
-        if confluence_df is None or (isinstance(confluence_df, pd.DataFrame) and confluence_df.empty):
-            return "<p>无策略共振数据</p>"
-        return confluence_df.to_html(index=False, classes='dataframe')
-    
-    def _market_stats_to_html(self, stats):
-        """将市场统计数据转换为HTML表格"""
-        if not stats or not isinstance(stats, dict):
-            return "<p>无市场统计数据</p>"
-        html = "<table>"
-        html += "<tr><th>指标</th><th>数值</th></tr>"
-        for key, value in stats.items():
-            html += f"<tr><td>{key}</td><td>{value}</td></tr>"
-        html += "</table>"
-        return html
-    
-    def _log_confluence_summary(self, strategy_counts):
-        """记录共振统计摘要"""
-        logging.info("=== 策略共振统计 ===")
-        for count, num_stocks in sorted(strategy_counts.items(), reverse=True):
-            logging.info(f"触发{count}个策略的股票数量: {num_stocks}")
-        logging.info("==================")
-
-
-def prepare():
-    """
-    Prepare the workflow
-    """
-    if datetime.now().weekday() == 0:
-        # Monday, fetch weekly data
-        stocks = data_fetcher.fetch_weekly_data()
-    else:
-        # Other days, fetch daily data
-        stocks = data_fetcher.fetch_daily_data()
-    
-    logging.info("************************ process start ***************************************")
-    all_data = ak.stock_zh_a_spot_em()
-    
-    # 过滤科创板股票
-    all_data = all_data[~all_data['代码'].str.startswith('68')]
-    
-    subset = all_data[['代码', '名称']]
-    stocks = [tuple(x) for x in subset.values]
-    statistics(all_data, stocks)
-
-    strategies = {
-        '放量上涨': enter.check_volume,
-        '均线多头': keep_increasing.check,
-        '停机坪': parking_apron.check,
-        '回踩年线': backtrace_ma250.check,
-        '无大幅回撤': low_backtrace_increase.check,
-        '海龟交易法则': turtle_trade.check_enter,
-        '高而窄的旗形': high_tight_flag.check,
-        '放量跌停': climax_limitdown.check,
-        'RARA策略': RARA.check,
-        'Alpha因子策略': formulaic_alphas.check,
-        'Alpha101策略': alpha_factors101.check,
-        'Alpha191策略': alpha_factors191.check,
-    }
-
-    if datetime.now().weekday() == 0:
-        strategies['均线多头'] = keep_increasing.check
-
-    process(stocks, strategies)
-
-    logging.info("************************ process   end ***************************************")
-
-
-def process(stocks, strategies):
-    analyzer = StrategyAnalyzer()
-    stocks_data = data_fetcher.run(stocks)
-    stock_signals = defaultdict(list)
-    
-    for strategy, strategy_func in strategies.items():
-        results = check_strategy(stocks_data, strategy, strategy_func)
-        for code, signal in results.items():
-            stock_signals[code].append((strategy, signal))
-        time.sleep(2)
-    
-    # 生成市场统计数据
-    market_stats = get_market_stats(stocks_data)
-    
-    # 生成完整报告
-    analyzer.generate_daily_report(stock_signals, market_stats)
-
-
-def check_strategy(stocks_data, strategy, strategy_func):
-    """检查单个策略的信号"""
-    end = settings.config['end_date']
-    results = {}
-    
-    for code, data in stocks_data.items():
-        if end is not None and end < data.iloc[0].日期:
-            logging.debug(f"{code[0]}在{end}时还未上市")
-            continue
-            
+    def prepare_data(self, data):
+        """准备数据"""
         try:
-            signal = strategy_func(code[0], data, end_date=end)
-            results[code] = "买入" if signal else "观望"
-        except Exception as e:
-            logging.error(f"策略{strategy}处理股票{code}时出错：{str(e)}")
-            results[code] = "错误"
-    
-    return results
-
-
-def get_market_stats(stocks_data):
-    """获取市场统计数据"""
-    stats = {
-        '日期': datetime.now().strftime('%Y%m%d'),
-        '涨停数量': 0,
-        '跌停数量': 0,
-        '涨幅大于5%数量': 0,
-        '跌幅大于5%数量': 0,
-        '总股票数量': len(stocks_data)
-    }
-    
-    for data in stocks_data.values():
-        if len(data) > 0:
-            last_price = data['收盘'].iloc[-1]
-            prev_price = data['收盘'].iloc[-2] if len(data) > 1 else last_price
-            change_pct = (last_price - prev_price) / prev_price * 100
+            if data is None or data.empty:
+                return None
             
-            if change_pct >= 9.5:
-                stats['涨停数量'] += 1
-            elif change_pct <= -9.5:
-                stats['跌停数量'] += 1
-            elif change_pct >= 5:
-                stats['涨幅大于5%数量'] += 1
-            elif change_pct <= -5:
-                stats['跌幅大于5%数量'] += 1
-    
-    return stats
+            # 确保数据类型正确
+            numeric_columns = ['开盘', '收盘', '最高', '最低', '成交量', '成交额', '涨跌幅']
+            for col in numeric_columns:
+                if col in data.columns:
+                    data[col] = pd.to_numeric(data[col], errors='coerce')
+            
+            # 计算技术指标
+            data['MA5'] = data['收盘'].rolling(window=5).mean()
+            data['MA10'] = data['收盘'].rolling(window=10).mean()
+            data['MA20'] = data['收盘'].rolling(window=20).mean()
+            data['MA30'] = data['收盘'].rolling(window=30).mean()
+            data['MA60'] = data['收盘'].rolling(window=60).mean()
+            data['MA250'] = data['收盘'].rolling(window=250).mean()
+            
+            data['VOL_MA5'] = data['成交量'].rolling(window=5).mean()
+            data['VOL_MA10'] = data['成交量'].rolling(window=10).mean()
+            data['VOL_MA20'] = data['成交量'].rolling(window=20).mean()
+            
+            # 计算其他指标
+            data['ATR'] = self.calculate_atr(data)
+            data['波动率'] = self.calculate_volatility(data)
+            
+            return data
+            
+        except Exception as e:
+            self.logger.error(f"准备数据时出错: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            return None
 
+    def calculate_atr(self, data, period=14):
+        """计算ATR指标"""
+        try:
+            high = data['最高']
+            low = data['最低']
+            close = data['收盘']
+            
+            tr1 = high - low
+            tr2 = abs(high - close.shift(1))
+            tr3 = abs(low - close.shift(1))
+            
+            tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+            atr = tr.rolling(window=period).mean()
+            
+            return atr
+            
+        except Exception as e:
+            self.logger.error(f"计算ATR时出错: {str(e)}")
+            return pd.Series(index=data.index)
 
-def statistics(all_data, stocks):
-    limitup = len(all_data.loc[(all_data['涨跌幅'] >= 9.5)])
-    limitdown = len(all_data.loc[(all_data['涨跌幅'] <= -9.5)])
-    up5 = len(all_data.loc[(all_data['涨跌幅'] >= 5)])
-    down5 = len(all_data.loc[(all_data['涨跌幅'] <= -5)])
+    def calculate_volatility(self, data, period=20):
+        """计算波动率"""
+        try:
+            returns = data['收盘'].pct_change()
+            volatility = returns.rolling(window=period).std() * np.sqrt(period)
+            return volatility
+            
+        except Exception as e:
+            self.logger.error(f"计算波动率时出错: {str(e)}")
+            return pd.Series(index=data.index)
 
-    msg = "涨停数：{}   跌停数：{}\n涨幅大于5%数：{}  跌幅大于5%数：{}".format(
-        limitup, limitdown, up5, down5)
-    logging.info(msg)
-    push.statistics(msg)
+    def analyze_stock(self, code, data):
+        """分析单只股票"""
+        try:
+            # 准备数据
+            processed_data = self.prepare_data(data)
+            if processed_data is None:
+                self.logger.warning(f"股票{code}数据处理失败")
+                return []
+            
+            # 运行策略分析
+            strategies = {
+                '放量上涨': enter.check_volume,
+                '均线多头': keep_increasing.check,
+                '停机坪': parking_apron.check,
+                '回踩年线': backtrace_ma250.check,
+                '无大幅回撤': low_backtrace_increase.check,
+                '海龟交易法则': turtle_trade.check_enter,
+                '高而窄的旗形': high_tight_flag.check,
+                '放量跌停': climax_limitdown.check,
+                'RARA策略': RARA.check,
+                'Alpha因子策略': formulaic_alphas.check,
+            }
+            
+            results = []
+            for strategy_name, strategy_func in strategies.items():
+                try:
+                    if strategy_func(code, processed_data):
+                        results.append((strategy_name, "买入"))
+                except Exception as e:
+                    self.logger.error(f"运行策略{strategy_name}时出错: {str(e)}")
+                    self.logger.debug(traceback.format_exc())
+            
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"分析股票{code}时出错: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            return []
+
+    def analyze_stocks(self, stocks_data):
+        """分析多只股票"""
+        results = {}
+        
+        try:
+            for code, data in stocks_data.items():
+                results[code] = self.analyze_stock(code, data)
+            
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"批量分析股票时出错: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            return results
+
+    def prepare(self):
+        """主工作流程"""
+        try:
+            self.logger.info("开始执行工作流程")
+            # 确保目录存在
+            self.ensure_dir_exists('results')
+            self.ensure_dir_exists('logs')
+            
+            # 获取股票数据
+            stocks_data = data_fetcher.run()
+            if not stocks_data:
+                self.logger.error("未获取到股票数据")
+                return
+            
+            # 分析股票
+            results = self.analyze_stocks(stocks_data)
+            
+            # 导出结果
+            self.export_results(results, stocks_data)
+            
+        except Exception as e:
+            self.logger.error(f"工作流程出错: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+
+    def setup_logging(self):
+        """设置日志系统"""
+        # 已由LoggerManager处理
+        pass
+
+    def export_results(self, results, stocks_data):
+        """导出分析结果"""
+        try:
+            self.logger.info("开始导出分析结果")
+            
+            # 创建结果目录
+            result_dir = self.logger_manager.create_result_subdirectory('analysis')
+            
+            # 导出为CSV
+            result_file = os.path.join(result_dir, 'analysis_results.csv')
+            
+            # 整理结果数据
+            rows = []
+            for code, strategies in results.items():
+                if strategies:  # 只导出有策略信号的股票
+                    for strategy, signal in strategies:
+                        rows.append({
+                            '股票代码': code,
+                            '策略名称': strategy,
+                            '信号类型': signal,
+                            '分析时间': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        })
+            
+            if rows:
+                df = pd.DataFrame(rows)
+                df.to_csv(result_file, index=False, encoding='utf-8-sig')
+                self.logger.info(f"分析结果已保存到: {result_file}")
+            else:
+                self.logger.warning("没有产生任何分析结果")
+                
+        except Exception as e:
+            self.logger.error(f"导出结果失败: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            raise
+
+    def run(self):
+        """运行工作流程（与prepare方法相同）"""
+        self.prepare()
 
 
