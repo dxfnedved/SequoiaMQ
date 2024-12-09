@@ -2,226 +2,253 @@
 
 import data_fetcher
 import settings
-import strategy.enter as enter
-from strategy import turtle_trade, climax_limitdown
-from strategy import backtrace_ma250
-from strategy import breakthrough_platform
-from strategy import parking_apron
-from strategy import low_backtrace_increase
-from strategy import keep_increasing
-from strategy import high_tight_flag
-from strategy import formulaic_alphas
-from strategy import RARA
-from strategy import alpha_factors101
-from strategy import alpha_factors191
-import akshare as ak
-import push
-import logging
-import time
-from datetime import datetime
-from collections import defaultdict
 import os
 import pandas as pd
 import numpy as np
-import traceback
+from datetime import datetime
 from logger_manager import LoggerManager
+from strategy.RSRS import RSRS_Strategy
+from strategy.alpha_factors101 import Alpha101Strategy
 
 class WorkFlow:
-    def __init__(self):
-        self.logger_manager = LoggerManager()
+    """工作流程管理"""
+    def __init__(self, strategies=None, logger_manager=None):
+        # 初始化日志管理器
+        self.logger_manager = logger_manager or LoggerManager()
         self.logger = self.logger_manager.get_logger("work_flow")
+        
+        # 初始化组件
+        self.data_fetcher = data_fetcher.DataFetcher(logger_manager=self.logger_manager)
+        
+        # 初始化策略
+        self.strategies = []
+        if strategies:
+            for strategy_info in strategies:
+                try:
+                    strategy_instance = strategy_info['class']()
+                    self.strategies.append({
+                        'name': strategy_info['name'],
+                        'instance': strategy_instance
+                    })
+                except Exception as e:
+                    self.logger.error(f"初始化策略 {strategy_info['name']} 失败: {str(e)}")
+        
+    def get_stock_data(self, code):
+        """获取股票数据"""
+        try:
+            return self.data_fetcher.fetch_stock_data(code)
+        except Exception as e:
+            self.logger.error(f"获取股票数据失败: {str(e)}")
+            return None
+            
+    def get_stock_signals(self, code):
+        """获取股票买卖信号"""
+        try:
+            data = self.get_stock_data(code)
+            if data is None:
+                return []
+                
+            signals = []
+            
+            # 获取各个策略的信号
+            for strategy in self.strategies:
+                try:
+                    strategy_signals = strategy['instance'].get_signals(data)
+                    signals.extend(strategy_signals)
+                except Exception as e:
+                    self.logger.error(f"获取策略 {strategy['name']} 信号失败: {str(e)}")
+            
+            return signals
+            
+        except Exception as e:
+            self.logger.error(f"获取股票信号失败: {str(e)}")
+            return []
+            
+    def analyze_stock(self, code):
+        """分析股票"""
+        try:
+            data = self.get_stock_data(code)
+            if data is None:
+                return None
+                
+            results = {}
+            
+            # 运行各个策略的分析
+            for strategy in self.strategies:
+                try:
+                    result = strategy['instance'].analyze(data)
+                    if result:
+                        # 将策略名称添加到结果键中
+                        strategy_results = {
+                            f"{strategy['name']}_{key}": value 
+                            for key, value in result.items()
+                        }
+                        results.update(strategy_results)
+                except Exception as e:
+                    self.logger.error(f"策略 {strategy['name']} 分析失败: {str(e)}")
+            
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"分析股票失败: {str(e)}")
+            return None
+
+    def prepare(self):
+        """准备数据和执行分析"""
+        try:
+            # 获取股票列表
+            stock_list = settings.top_list
+            if not stock_list:
+                self.logger.error("股票列表为空")
+                return
+            
+            # 获取数据（使用多线程）
+            self.logger.info("开始获取股票数据...")
+            stocks_data = self.data_fetcher.run(stock_list)
+            if not stocks_data:
+                self.logger.error("未能获取到任何股票数据")
+                return
+            
+            # 分析每只股票
+            self.logger.info(f"开始分析 {len(stocks_data)} 只股票...")
+            results = {}
+            with tqdm(total=len(stocks_data), desc="分析进度") as pbar:
+                for code, data in stocks_data.items():
+                    result = self.analyze_stock(code, data)
+                    if result:
+                        results[code] = result
+                    pbar.update(1)
+            
+            # 保存结果
+            self.save_results(results)
+            
+        except Exception as e:
+            self.logger.error(f"工作流执行失败: {str(e)}")
+
+    def calculate_basic_indicators(self, data):
+        """计算基本技术指标"""
+        try:
+            result = {}
+            
+            # 计算最新价格和涨跌幅
+            latest_price = data['Close'].iloc[-1]
+            price_change = data['Change'].iloc[-1]
+            
+            # 计算均线
+            for period in [5, 10, 20, 30, 60, 250]:
+                ma = data['Close'].rolling(window=period).mean().iloc[-1]
+                result[f'MA{period}'] = round(ma, 2)
+            
+            # 计算成交量指标
+            volume = data['Volume'].iloc[-1]
+            vol_ma5 = data['Volume'].rolling(window=5).mean().iloc[-1]
+            vol_ma10 = data['Volume'].rolling(window=10).mean().iloc[-1]
+            
+            # 计算波动率
+            returns = data['Close'].pct_change()
+            volatility = returns.std() * np.sqrt(252)
+            
+            # 计算ATR
+            tr1 = data['High'] - data['Low']
+            tr2 = abs(data['High'] - data['Close'].shift(1))
+            tr3 = abs(data['Low'] - data['Close'].shift(1))
+            tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+            atr = tr.rolling(window=14).mean().iloc[-1]
+            
+            # 汇总结果
+            result.update({
+                '最新价格': round(latest_price, 2),
+                '涨跌幅': round(price_change, 2),
+                '成交量': round(volume/10000, 2),
+                '量比': round(volume/vol_ma5, 2),
+                '波动率': round(volatility * 100, 2),
+                'ATR': round(atr, 2)
+            })
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"计算基本指标失败: {str(e)}")
+            return {}
+
+    def save_results(self, results):
+        """保存分析结果"""
+        try:
+            if not results:
+                self.logger.warning("没有结果可保存")
+                return
+            
+            # 创建结果目录
+            result_dir = "results"
+            os.makedirs(result_dir, exist_ok=True)
+            
+            # 生成文件名
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = os.path.join(result_dir, f"analysis_{timestamp}.xlsx")
+            
+            # 转换结果为DataFrame
+            rows = []
+            for code, result in results.items():
+                row = {'股票代码': code, '分析时间': timestamp}
+                row.update(result)
+                rows.append(row)
+            
+            df = pd.DataFrame(rows)
+            
+            # 保存到Excel
+            df.to_excel(filename, index=False)
+            self.logger.info(f"分析结果已保存: {filename}")
+            
+            # 生成HTML报告
+            self.generate_html_report(df, timestamp)
+            
+        except Exception as e:
+            self.logger.error(f"保存结果失败: {str(e)}")
+
+    def generate_html_report(self, df, timestamp):
+        """生成HTML分析报告"""
+        try:
+            # 创建HTML文件
+            report_file = os.path.join("results", f"report_{timestamp}.html")
+            
+            # 生成HTML内容
+            html_content = f"""
+            <html>
+            <head>
+                <title>股票分析报告 - {timestamp}</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                    h1 {{ color: #333; }}
+                    table {{ border-collapse: collapse; width: 100%; }}
+                    th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+                    th {{ background-color: #f5f5f5; }}
+                    tr:nth-child(even) {{ background-color: #f9f9f9; }}
+                    .signal {{ color: #e91e63; font-weight: bold; }}
+                </style>
+            </head>
+            <body>
+                <h1>股票分析报告</h1>
+                <p>生成时间: {timestamp}</p>
+                {df.to_html(classes='table', escape=False)}
+            </body>
+            </html>
+            """
+            
+            # 保存HTML文件
+            with open(report_file, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+            
+            self.logger.info(f"HTML报告已保存到: {report_file}")
+            
+        except Exception as e:
+            self.logger.error(f"生成HTML报告失败: {str(e)}")
 
     def ensure_dir_exists(self, path):
         """确保目录存在"""
-        if not os.path.exists(path):
-            os.makedirs(path)
-
-    def prepare_data(self, data):
-        """准备数据"""
         try:
-            if data is None or data.empty:
-                return None
-            
-            # 确保数据类型正确
-            numeric_columns = ['开盘', '收盘', '最高', '最低', '成交量', '成交额', '涨跌幅']
-            for col in numeric_columns:
-                if col in data.columns:
-                    data[col] = pd.to_numeric(data[col], errors='coerce')
-            
-            # 计算技术指标
-            data['MA5'] = data['收盘'].rolling(window=5).mean()
-            data['MA10'] = data['收盘'].rolling(window=10).mean()
-            data['MA20'] = data['收盘'].rolling(window=20).mean()
-            data['MA30'] = data['收盘'].rolling(window=30).mean()
-            data['MA60'] = data['收盘'].rolling(window=60).mean()
-            data['MA250'] = data['收盘'].rolling(window=250).mean()
-            
-            data['VOL_MA5'] = data['成交量'].rolling(window=5).mean()
-            data['VOL_MA10'] = data['成交量'].rolling(window=10).mean()
-            data['VOL_MA20'] = data['成交量'].rolling(window=20).mean()
-            
-            # 计算其他指标
-            data['ATR'] = self.calculate_atr(data)
-            data['波动率'] = self.calculate_volatility(data)
-            
-            return data
-            
+            os.makedirs(path, exist_ok=True)
         except Exception as e:
-            self.logger.error(f"准备数据时出错: {str(e)}")
-            self.logger.debug(traceback.format_exc())
-            return None
-
-    def calculate_atr(self, data, period=14):
-        """计算ATR指标"""
-        try:
-            high = data['最高']
-            low = data['最低']
-            close = data['收盘']
-            
-            tr1 = high - low
-            tr2 = abs(high - close.shift(1))
-            tr3 = abs(low - close.shift(1))
-            
-            tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-            atr = tr.rolling(window=period).mean()
-            
-            return atr
-            
-        except Exception as e:
-            self.logger.error(f"计算ATR时出错: {str(e)}")
-            return pd.Series(index=data.index)
-
-    def calculate_volatility(self, data, period=20):
-        """计算波动率"""
-        try:
-            returns = data['收盘'].pct_change()
-            volatility = returns.rolling(window=period).std() * np.sqrt(period)
-            return volatility
-            
-        except Exception as e:
-            self.logger.error(f"计算波动率时出错: {str(e)}")
-            return pd.Series(index=data.index)
-
-    def analyze_stock(self, code, data):
-        """分析单只股票"""
-        try:
-            # 准备数据
-            processed_data = self.prepare_data(data)
-            if processed_data is None:
-                self.logger.warning(f"股票{code}数据处理失败")
-                return []
-            
-            # 运行策略分析
-            strategies = {
-                '放量上涨': enter.check_volume,
-                '均线多头': keep_increasing.check,
-                '停机坪': parking_apron.check,
-                '回踩年线': backtrace_ma250.check,
-                '无大幅回撤': low_backtrace_increase.check,
-                '海龟交易法则': turtle_trade.check_enter,
-                '高而窄的旗形': high_tight_flag.check,
-                '放量跌停': climax_limitdown.check,
-                'RARA策略': RARA.check,
-                'Alpha因子策略': formulaic_alphas.check,
-            }
-            
-            results = []
-            for strategy_name, strategy_func in strategies.items():
-                try:
-                    if strategy_func(code, processed_data):
-                        results.append((strategy_name, "买入"))
-                except Exception as e:
-                    self.logger.error(f"运行策略{strategy_name}时出错: {str(e)}")
-                    self.logger.debug(traceback.format_exc())
-            
-            return results
-            
-        except Exception as e:
-            self.logger.error(f"分析股票{code}时出错: {str(e)}")
-            self.logger.debug(traceback.format_exc())
-            return []
-
-    def analyze_stocks(self, stocks_data):
-        """分析多只股票"""
-        results = {}
-        
-        try:
-            for code, data in stocks_data.items():
-                results[code] = self.analyze_stock(code, data)
-            
-            return results
-            
-        except Exception as e:
-            self.logger.error(f"批量分析股票时出错: {str(e)}")
-            self.logger.debug(traceback.format_exc())
-            return results
-
-    def prepare(self):
-        """主工作流程"""
-        try:
-            self.logger.info("开始执行工作流程")
-            # 确保目录存在
-            self.ensure_dir_exists('results')
-            self.ensure_dir_exists('logs')
-            
-            # 获取股票数据
-            stocks_data = data_fetcher.run()
-            if not stocks_data:
-                self.logger.error("未获取到股票数据")
-                return
-            
-            # 分析股票
-            results = self.analyze_stocks(stocks_data)
-            
-            # 导出结果
-            self.export_results(results, stocks_data)
-            
-        except Exception as e:
-            self.logger.error(f"工作流程出错: {str(e)}")
-            self.logger.debug(traceback.format_exc())
-
-    def setup_logging(self):
-        """设置日志系统"""
-        # 已由LoggerManager处理
-        pass
-
-    def export_results(self, results, stocks_data):
-        """导出分析结果"""
-        try:
-            self.logger.info("开始导出分析结果")
-            
-            # 创建结果目录
-            result_dir = self.logger_manager.create_result_subdirectory('analysis')
-            
-            # 导出为CSV
-            result_file = os.path.join(result_dir, 'analysis_results.csv')
-            
-            # 整理结果数据
-            rows = []
-            for code, strategies in results.items():
-                if strategies:  # 只导出有策略信号的股票
-                    for strategy, signal in strategies:
-                        rows.append({
-                            '股票代码': code,
-                            '策略名称': strategy,
-                            '信号类型': signal,
-                            '分析时间': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                        })
-            
-            if rows:
-                df = pd.DataFrame(rows)
-                df.to_csv(result_file, index=False, encoding='utf-8-sig')
-                self.logger.info(f"分析结果已保存到: {result_file}")
-            else:
-                self.logger.warning("没有产生任何分析结果")
-                
-        except Exception as e:
-            self.logger.error(f"导出结果失败: {str(e)}")
-            self.logger.debug(traceback.format_exc())
+            self.logger.error(f"创建目录失败: {str(e)}")
             raise
-
-    def run(self):
-        """运行工作流程（与prepare方法相同）"""
-        self.prepare()
 
 

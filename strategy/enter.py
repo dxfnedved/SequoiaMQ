@@ -1,148 +1,106 @@
 # -*- encoding: UTF-8 -*-
 
-import talib as tl
+import numpy as np
 import pandas as pd
-import logging
+import talib as ta
+from . import BaseStrategy
 
-
-# TODO 真实波动幅度（ATR）放大
-# 最后一个交易日收市价从下向上突破指定区间内最高价
-def check_breakthrough(code_name, data, end_date=None, threshold=30):
-    max_price = 0
-    if end_date is not None:
-        mask = (data['日期'] <= end_date)
-        data = data.loc[mask]
-    data = data.tail(n=threshold+1)
-    if len(data) < threshold + 1:
-        logging.debug("{0}:样本小于{1}天...\n".format(code_name, threshold))
-        return False
-
-    # 最后一天收市价
-    last_close = float(data.iloc[-1]['收盘'])
-    last_open = float(data.iloc[-1]['开盘'])
-
-    data = data.head(n=threshold)
-    second_last_close = data.iloc[-1]['收盘']
-
-    for index, row in data.iterrows():
-        if row['收盘'] > max_price:
-            max_price = float(row['收盘'])
-
-    if last_close > max_price > second_last_close and max_price > last_open \
-            and last_close / last_open > 1.06:
-        return True
-    else:
-        return False
-
-
-# 收盘价高于N日均线
-def check_ma(code_name, data, end_date=None, ma_days=250):
-    if data is None or len(data) < ma_days:
-        logging.debug("{0}:样本小于{1}天...\n".format(code_name, ma_days))
-        return False
-
-    ma_tag = 'ma' + str(ma_days)
-    data[ma_tag] = pd.Series(tl.MA(data['收盘'].values, ma_days), index=data.index.values)
-
-    if end_date is not None:
-        mask = (data['日期'] <= end_date)
-        data = data.loc[mask]
-
-    last_close = data.iloc[-1]['收盘']
-    last_ma = data.iloc[-1][ma_tag]
-    if last_close > last_ma:
-        return True
-    else:
-        return False
-
-
-# 上市日小于60天
-def check_new(code_name, data, end_date=None, threshold=60):
-    size = len(data.index)
-    if size < threshold:
-        return True
-    else:
-        return False
-
-
-# 量比大于2
-# 例如：
-#   2017-09-26 2019-02-11 京东方A
-#   2019-03-22 浙江龙盛
-#   2019-02-13 汇顶科技
-#   2019-01-29 新城控股
-#   2017-11-16 保利地产
-def check_volume(code_name, data, end_date=None, threshold=60):
-    if len(data) < threshold:
-        logging.debug("{0}:样本小于250天...\n".format(code_name))
-        return False
-    data['vol_ma5'] = pd.Series(tl.MA(data['成交量'].values, 5), index=data.index.values)
-
-    if end_date is not None:
-        mask = (data['日期'] <= end_date)
-        data = data.loc[mask]
-    if data.empty:
-        return False
-    p_change = data.iloc[-1]['p_change']
-    if p_change < 2 \
-            or data.iloc[-1]['收盘'] < data.iloc[-1]['开盘']:
-        return False
-    data = data.tail(n=threshold + 1)
-    if len(data) < threshold + 1:
-        logging.debug("{0}:样本小于{1}天...\n".format(code_name, threshold))
-        return False
-
-    # 最后一天收盘价
-    last_close = data.iloc[-1]['收盘']
-    # 最后一天成交量
-    last_vol = data.iloc[-1]['成交量']
-
-    amount = last_close * last_vol * 100
-
-    # 成交额不低于2亿
-    if amount < 200000000:
-        return False
-
-    data = data.head(n=threshold)
-
-    mean_vol = data.iloc[-1]['vol_ma5']
-
-    vol_ratio = last_vol / mean_vol
-    if vol_ratio >= 2:
-        msg = "*{0}\n量比：{1:.2f}\t涨幅：{2}%\n".format(code_name, vol_ratio, p_change)
-        logging.debug(msg)
-        return True
-    else:
-        return False
-
-
-# 量比大于3.0
-def check_continuous_volume(code_name, data, end_date=None, threshold=60, window_size=3):
-    stock = code_name[0]
-    name = code_name[1]
-    data['vol_ma5'] = pd.Series(tl.MA(data['成交量'].values, 5), index=data.index.values)
-    if end_date is not None:
-        mask = (data['日期'] <= end_date)
-        data = data.loc[mask]
-    data = data.tail(n=threshold + window_size)
-    if len(data) < threshold + window_size:
-        logging.debug("{0}:样本小于{1}天...\n".format(code_name, threshold+window_size))
-        return False
-
-    # 最后一天收盘价
-    last_close = data.iloc[-1]['收盘']
-    # 最后一天成交量
-    last_vol = data.iloc[-1]['成交量']
-
-    data_front = data.head(n=threshold)
-    data_end = data.tail(n=window_size)
-
-    mean_vol = data_front.iloc[-1]['vol_ma5']
-
-    for index, row in data_end.iterrows():
-        if float(row['成交量']) / mean_vol < 3.0:
+class EnterStrategy(BaseStrategy):
+    """入场策略"""
+    def __init__(self):
+        super().__init__()
+        self.name = "EnterStrategy"
+        self.threshold = 30  # 突破观察期
+        self.volume_ratio = 1.5  # 放量倍数
+        self.price_change = 0.02  # 价格变动阈值
+        
+    def check_breakthrough(self, data):
+        """检查突破"""
+        if len(data) < self.threshold + 1:
             return False
-
-    msg = "*{0} 量比：{1:.2f}\n\t收盘价：{2}\n".format(code_name, last_vol/mean_vol, last_close)
-    logging.debug(msg)
-    return True
+            
+        # 最后一天收市价
+        last_close = data['收盘'].iloc[-1]
+        last_open = data['开盘'].iloc[-1]
+        
+        # 前N天最高价
+        data_prev = data.iloc[:-1]
+        max_price = data_prev['收盘'].max()
+        second_last_close = data_prev['收盘'].iloc[-1]
+        
+        return (last_close > max_price > second_last_close and 
+                max_price > last_open and 
+                last_close / last_open > 1.06)
+                
+    def check_volume(self, data):
+        """检查放量"""
+        if len(data) < 2:
+            return False
+            
+        # 获取最新的两天数据
+        latest_data = data.iloc[-2:]
+        
+        # 检查价格变动
+        price_change = latest_data['收盘'].iloc[-1] / latest_data['收盘'].iloc[0] - 1
+        
+        # 检查成交量变化
+        volume_change = latest_data['成交量'].iloc[-1] / latest_data['成交量'].iloc[0]
+        
+        return price_change > self.price_change and volume_change > self.volume_ratio
+        
+    def analyze(self, data):
+        """分析数据"""
+        try:
+            if len(data) < self.threshold + 1:
+                return None
+                
+            # 计算各项指标
+            breakthrough = self.check_breakthrough(data)
+            volume = self.check_volume(data)
+            ma5 = ta.MA(data['收盘'].values, timeperiod=5)[-1]
+            ma10 = ta.MA(data['收盘'].values, timeperiod=10)[-1]
+            ma20 = ta.MA(data['收盘'].values, timeperiod=20)[-1]
+            
+            # 判断信号
+            if breakthrough and volume:
+                signal = "买入"
+            else:
+                signal = "无"
+                
+            return {
+                'breakthrough': breakthrough,
+                'volume_signal': volume,
+                'ma5': ma5,
+                'ma10': ma10,
+                'ma20': ma20,
+                'signal': signal
+            }
+            
+        except Exception as e:
+            print(f"入场策略分析失败: {str(e)}")
+            return None
+            
+    def get_signals(self, data):
+        """获取买卖信号"""
+        try:
+            if len(data) < self.threshold + 1:
+                return []
+                
+            signals = []
+            result = self.analyze(data)
+            
+            if result and result['signal'] == "买入":
+                signals.append({
+                    'date': data.index[-1],
+                    'type': '买入',
+                    'strategy': self.name,
+                    'price': data['收盘'].iloc[-1],
+                    'breakthrough': result['breakthrough'],
+                    'volume_signal': result['volume_signal']
+                })
+                
+            return signals
+            
+        except Exception as e:
+            print(f"获取入场策略信号失败: {str(e)}")
+            return []

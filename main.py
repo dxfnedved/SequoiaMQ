@@ -9,6 +9,7 @@ import datetime
 from pathlib import Path
 import sys
 import stock_selector
+from PySide6.QtWidgets import QApplication
 from logger_manager import LoggerManager
 import traceback
 
@@ -29,7 +30,7 @@ def main():
         # 检查是否有命令行参数
         if len(sys.argv) > 1 and sys.argv[1] == '--gui':
             # GUI模式
-            app = stock_selector.QApplication(sys.argv)
+            app = QApplication(sys.argv)
             app.setStyle('Fusion')  # 设置应用样式
             
             window = stock_selector.StockSelector()

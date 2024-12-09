@@ -3,182 +3,156 @@
 import numpy as np
 import pandas as pd
 import talib as ta
+from strategy.base import BaseStrategy
 
-def calculate_alpha1(data):
-    """
-    Alpha#1: (-1 * CORR(RANK(DELTA(LOG(VOLUME), 1)), RANK(((CLOSE - OPEN) / OPEN)), 6))
-    相关性因子，衡量成交量变化和日内收益率的排序相关性
-    """
-    volume = data['成交量']
-    close = data['收盘']
-    open_price = data['开盘']
-    
-    # 计算DELTA(LOG(VOLUME), 1)
-    delta_log_volume = np.log(volume).diff(1)
-    
-    # 计算((CLOSE - OPEN) / OPEN)
-    intraday_return = (close - open_price) / open_price
-    
-    # 计算排序相关性
-    rank_delta_log_volume = delta_log_volume.rank(pct=True)
-    rank_intraday_return = intraday_return.rank(pct=True)
-    
-    # 计算6日相关系数
-    correlation = rank_delta_log_volume.rolling(window=6).corr(rank_intraday_return)
-    
-    return -1 * correlation
-
-def calculate_alpha2(data):
-    """
-    Alpha#2: (-1 * DELTA((((CLOSE - LOW) - (HIGH - CLOSE)) / (HIGH - LOW)), 1))
-    价格位置因子，衡量收盘价在当日价格区间中的位置变化
-    """
-    close = data['收盘']
-    high = data['最高']
-    low = data['最低']
-    
-    # 计算价格位置
-    price_position = ((close - low) - (high - close)) / (high - low)
-    
-    # 计算1日差分
-    delta = price_position.diff(1)
-    
-    return -1 * delta
-
-def calculate_alpha3(data):
-    """
-    Alpha#3: SUM((CLOSE=DELAY(CLOSE,1)?0:CLOSE-(CLOSE>DELAY(CLOSE,1)?MIN(LOW,DELAY(CLOSE,1)):MAX(HIGH,DELAY(CLOSE,1)))),6)
-    趋势突破因子，衡量价格突破前期高低点的强度
-    """
-    close = data['收盘']
-    high = data['最高']
-    low = data['最低']
-    delay_close = close.shift(1)
-    
-    # 计算条件表达式
-    condition1 = close == delay_close
-    condition2 = close > delay_close
-    
-    # 计算价格突破
-    max_price = np.maximum(high, delay_close)
-    min_price = np.minimum(low, delay_close)
-    
-    # 计算突破强度
-    breakthrough = np.where(condition1, 0,
-                          np.where(condition2, 
-                                 close - min_price,
-                                 close - max_price))
-    
-    # 计算6日累和
-    return pd.Series(breakthrough).rolling(window=6).sum()
-
-def calculate_alpha4(data):
-    """
-    Alpha#4: ((((SUM(CLOSE, 8) / 8) + STD(CLOSE, 8)) < (SUM(CLOSE, 2) / 2)) ? (-1 * 1) : 
-             (((SUM(CLOSE, 2) / 2) < ((SUM(CLOSE, 8) / 8) - STD(CLOSE, 8))) ? 1 : 
-             (((1 < (VOLUME / MEAN(VOLUME,20))) || ((VOLUME / MEAN(VOLUME,20)) == 1)) ? 1 : (-1 * 1))))
-    均线和波动率组合因子
-    """
-    close = data['收盘']
-    volume = data['成交量']
-    
-    # 计算移动平均和标准差
-    ma8 = close.rolling(window=8).mean()
-    std8 = close.rolling(window=8).std()
-    ma2 = close.rolling(window=2).mean()
-    volume_ma20 = volume.rolling(window=20).mean()
-    
-    # 计算条件
-    condition1 = (ma8 + std8) < ma2
-    condition2 = ma2 < (ma8 - std8)
-    condition3 = volume > volume_ma20
-    
-    # 组合信号
-    alpha = np.where(condition1, -1,
-                    np.where(condition2, 1,
-                            np.where(condition3, 1, -1)))
-    
-    return pd.Series(alpha)
-
-def normalize_factor(factor):
-    """
-    因子标准化
-    """
-    return (factor - factor.rolling(window=20).mean()) / factor.rolling(window=20).std()
-
-def check(stock_code, data, end_date=None):
-    """
-    Alpha191多因子策略检查
-    
-    Args:
-        stock_code: 股票代码
-        data: 股票数据
-        end_date: 结束日期
-    
-    Returns:
-        bool: True表示买入信号，False表示不买入
-    """
-    if len(data) < 20:  # 数据不足时不产生信号
-        return False
-    
-    try:
-        # 计算各个Alpha因子
-        factors = {
-            'alpha1': calculate_alpha1(data),
-            'alpha2': calculate_alpha2(data),
-            'alpha3': calculate_alpha3(data),
-            'alpha4': calculate_alpha4(data)
-        }
+class Alpha191Strategy(BaseStrategy):
+    """Alpha191策略"""
+    def __init__(self):
+        super().__init__()
+        self.name = "Alpha191Strategy"
+        self.window_size = 20  # 计算窗口
+        self.alpha5_threshold = 0.3  # Alpha5阈值
+        self.alpha6_threshold = 0.2  # Alpha6阈值
+        self.alpha7_threshold = -0.3  # Alpha7阈值
+        self.alpha8_threshold = -0.25  # Alpha8阈值
         
-        # 标准化因子
-        normalized_factors = {name: normalize_factor(factor) 
-                            for name, factor in factors.items()}
-        
-        # 获取最新的因子值
-        latest_factors = {name: factor.iloc[-1] 
-                         for name, factor in normalized_factors.items()}
-        
-        # 因子权重
-        weights = {
-            'alpha1': 0.25,
-            'alpha2': 0.25,
-            'alpha3': 0.25,
-            'alpha4': 0.25
-        }
-        
-        # 计算综合得分
-        composite_score = sum(latest_factors[factor] * weight 
-                            for factor, weight in weights.items())
-        
-        # 设置买入阈值
-        SCORE_THRESHOLD = 0.5
-        
-        # 生成买入信号
-        return composite_score > SCORE_THRESHOLD
-        
-    except Exception as e:
-        print(f"计算Alpha191因子时出错: {str(e)}")
-        return False
-
-def get_factor_exposure(data):
-    """
-    获取因子暴露度
-    用于分析和监控因子表现
-    """
-    try:
-        exposures = {
-            'alpha1': calculate_alpha1(data),
-            'alpha2': calculate_alpha2(data),
-            'alpha3': calculate_alpha3(data),
-            'alpha4': calculate_alpha4(data)
-        }
-        
-        # 标准化因子暴露度
-        normalized_exposures = {name: normalize_factor(exposure) 
-                              for name, exposure in exposures.items()}
-        
-        return normalized_exposures
-        
-    except Exception as e:
-        print(f"计算因子暴露度时出错: {str(e)}")
-        return None 
+    def calculate_alpha5(self, data):
+        """Alpha#5: (-1 * ts_rank(rank(volume), 5))"""
+        try:
+            volume = data['成交量']
+            volume_rank = volume.rank()
+            ts_rank = volume_rank.rolling(window=5).apply(
+                lambda x: pd.Series(x).rank().iloc[-1], raw=True
+            )
+            return -1 * ts_rank.iloc[-1]
+        except Exception as e:
+            print(f"计算Alpha5失败: {str(e)}")
+            return 0
+            
+    def calculate_alpha6(self, data):
+        """Alpha#6: (rank((open - (sum(vwap, 10) / 10))) * (-1 * abs(rank((close - vwap)))))"""
+        try:
+            open_price = data['开盘']
+            close = data['收盘']
+            volume = data['成交量']
+            amount = data['成交额']
+            
+            # 计算VWAP
+            vwap = amount / volume
+            vwap_ma10 = vwap.rolling(window=10).mean()
+            
+            rank_part1 = (open_price - vwap_ma10).rank()
+            rank_part2 = (close - vwap).rank()
+            
+            return (rank_part1 * (-1 * np.abs(rank_part2))).iloc[-1]
+        except Exception as e:
+            print(f"计算Alpha6失败: {str(e)}")
+            return 0
+            
+    def calculate_alpha7(self, data):
+        """Alpha#7: ((rank(max((vwap - close), 3)) + rank(min((vwap - close), 3))) * rank(delta(volume, 3)))"""
+        try:
+            close = data['收盘']
+            volume = data['成交量']
+            amount = data['成交额']
+            
+            # 计算VWAP
+            vwap = amount / volume
+            vwap_close_diff = vwap - close
+            
+            rank_max = vwap_close_diff.rolling(window=3).max().rank()
+            rank_min = vwap_close_diff.rolling(window=3).min().rank()
+            rank_volume_delta = volume.diff(3).rank()
+            
+            return ((rank_max + rank_min) * rank_volume_delta).iloc[-1]
+        except Exception as e:
+            print(f"计算Alpha7失败: {str(e)}")
+            return 0
+            
+    def calculate_alpha8(self, data):
+        """Alpha#8: rank(delta(((((high + low) / 2) * 0.2) + (vwap * 0.8)), 4))"""
+        try:
+            high = data['最高']
+            low = data['最低']
+            volume = data['成交量']
+            amount = data['成交额']
+            
+            # 计算VWAP
+            vwap = amount / volume
+            
+            # 计算中间价格
+            mid_price = (high + low) / 2
+            
+            # 计算加权价格
+            weighted_price = mid_price * 0.2 + vwap * 0.8
+            
+            # 计算4日差分的排名
+            return weighted_price.diff(4).rank().iloc[-1]
+        except Exception as e:
+            print(f"计算Alpha8失败: {str(e)}")
+            return 0
+            
+    def analyze(self, data):
+        """分析数据"""
+        try:
+            if len(data) < self.window_size:
+                return None
+                
+            # 计算各个Alpha因子
+            alpha5 = self.calculate_alpha5(data)
+            alpha6 = self.calculate_alpha6(data)
+            alpha7 = self.calculate_alpha7(data)
+            alpha8 = self.calculate_alpha8(data)
+            
+            # 判断信号
+            if (alpha5 > self.alpha5_threshold and
+                alpha6 > self.alpha6_threshold and
+                alpha7 < self.alpha7_threshold and
+                alpha8 < self.alpha8_threshold):
+                signal = "买入"
+            elif (alpha5 < -self.alpha5_threshold and
+                  alpha6 < -self.alpha6_threshold and
+                  alpha7 > -self.alpha7_threshold and
+                  alpha8 > -self.alpha8_threshold):
+                signal = "卖出"
+            else:
+                signal = "无"
+                
+            return {
+                'alpha5': alpha5,
+                'alpha6': alpha6,
+                'alpha7': alpha7,
+                'alpha8': alpha8,
+                'signal': signal
+            }
+            
+        except Exception as e:
+            print(f"Alpha191策略分析失败: {str(e)}")
+            return None
+            
+    def get_signals(self, data):
+        """获取买卖信号"""
+        try:
+            if len(data) < self.window_size:
+                return []
+                
+            signals = []
+            result = self.analyze(data)
+            
+            if result and result['signal'] != "无":
+                signals.append({
+                    'date': data.index[-1],
+                    'type': result['signal'],
+                    'strategy': self.name,
+                    'price': data['收盘'].iloc[-1],
+                    'alpha5': result['alpha5'],
+                    'alpha6': result['alpha6'],
+                    'alpha7': result['alpha7'],
+                    'alpha8': result['alpha8']
+                })
+                
+            return signals
+            
+        except Exception as e:
+            print(f"获取Alpha191策略信号失败: {str(e)}")
+            return [] 

@@ -9,6 +9,7 @@ from collections import defaultdict
 import time
 import data_fetcher
 import push
+from logger_manager import LoggerManager
 
 # 创建专门的logger
 logger = logging.getLogger('Alpha_Strategy')
@@ -20,6 +21,219 @@ MA_PERIODS = [5, 10, 20]  # 均线周期
 
 # 添加结果保存目录
 RESULTS_DIR = "results"
+
+class Alpha101Strategy:
+    """Alpha101 因子策略"""
+    
+    def __init__(self, logger_manager=None):
+        # 初始化日志管理器
+        self.logger_manager = logger_manager or LoggerManager()
+        self.logger = self.logger_manager.get_logger("Alpha101_Strategy")
+
+    def analyze(self, data):
+        """分析股票数据"""
+        try:
+            if data is None or data.empty:
+                self.logger.error("数据为空，无法分析")
+                return None
+                
+            # 检查必要的列是否存在
+            required_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+            if not all(col in data.columns for col in required_columns):
+                self.logger.error("数据缺少必要的列")
+                return None
+            
+            result = {}
+            
+            # 计算Alpha因子
+            alpha_factors = self.calculate_alpha_factors(data)
+            if alpha_factors:
+                result.update(alpha_factors)
+            
+            # 生成交易信号
+            signals = self.generate_signals(alpha_factors)
+            if signals:
+                result.update(signals)
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Alpha101策略分析失败: {str(e)}")
+            return None
+
+    def calculate_alpha_factors(self, data):
+        """计算Alpha因子"""
+        try:
+            result = {}
+            
+            # 计算收益率和波动率
+            returns = data['Close'].pct_change()
+            volatility = returns.rolling(window=20).std()
+            
+            # Alpha1: 处理收益率为负时的波动率
+            condition = returns < 0
+            combined = pd.Series(index=data.index)
+            combined[condition] = volatility[condition]
+            combined[~condition] = data['Close'][~condition] ** 2
+            alpha1 = self.ts_argmax_rank(combined, 5)
+            
+            # Alpha2: 成交量和价格变化的相关性
+            volume_delta = np.log(data['Volume']).diff(2)
+            price_change = (data['Close'] - data['Open']) / data['Open']
+            alpha2 = -1 * self.correlation_rank(volume_delta, price_change, 6)
+            
+            # Alpha3: 开盘价和成交量的相关性
+            alpha3 = -1 * self.correlation_rank(data['Open'], data['Volume'], 10)
+            
+            # Alpha4: 最低价的时序排名
+            alpha4 = -1 * self.ts_rank(data['Low'], 9)
+            
+            # 汇总结果
+            result.update({
+                'Alpha1': round(alpha1.iloc[-1], 4) if not pd.isna(alpha1.iloc[-1]) else 0,
+                'Alpha2': round(alpha2.iloc[-1], 4) if not pd.isna(alpha2.iloc[-1]) else 0,
+                'Alpha3': round(alpha3.iloc[-1], 4) if not pd.isna(alpha3.iloc[-1]) else 0,
+                'Alpha4': round(alpha4.iloc[-1], 4) if not pd.isna(alpha4.iloc[-1]) else 0
+            })
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"计算Alpha因子失败: {str(e)}")
+            return {}
+
+    def generate_signals(self, factors):
+        """生成交易信号"""
+        try:
+            result = {}
+            signals = []
+            
+            if not factors:
+                return {}
+            
+            # Alpha1信号
+            alpha1 = factors.get('Alpha1', 0)
+            if abs(alpha1) > 1.5:
+                signals.append(f"Alpha1{'看多' if alpha1 > 0 else '看空'}")
+            
+            # Alpha2信号
+            alpha2 = factors.get('Alpha2', 0)
+            if abs(alpha2) > 0.8:
+                signals.append(f"Alpha2{'看多' if alpha2 > 0 else '看空'}")
+            
+            # Alpha3信号
+            alpha3 = factors.get('Alpha3', 0)
+            if abs(alpha3) > 0.7:
+                signals.append(f"Alpha3{'看多' if alpha3 > 0 else '看空'}")
+            
+            # Alpha4信号
+            alpha4 = factors.get('Alpha4', 0)
+            if abs(alpha4) > 0.6:
+                signals.append(f"Alpha4{'看多' if alpha4 > 0 else '看空'}")
+            
+            if signals:
+                result['Alpha101_信号'] = '; '.join(signals)
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"生成Alpha信号失败: {str(e)}")
+            return {}
+
+    def ts_argmax_rank(self, series, window):
+        """计算时序最大值排名"""
+        try:
+            result = pd.Series(index=series.index)
+            for i in range(window, len(series)):
+                try:
+                    window_data = series.iloc[i-window:i]
+                    # 处理无效值
+                    valid_data = window_data.dropna()
+                    if len(valid_data) < 2:  # 至少需要2个有效值
+                        result.iloc[i] = np.nan
+                        continue
+                        
+                    # 计算最大值的位置
+                    max_pos = valid_data.values.argmax()
+                    result.iloc[i] = len(valid_data) - max_pos  # 转换为排名
+                except Exception as e:
+                    self.logger.debug(f"计算窗口 {i} 的最大值排名失败: {str(e)}")
+                    result.iloc[i] = np.nan
+                    
+            return result
+        except Exception as e:
+            self.logger.error(f"计算时序最大值排名失败: {str(e)}")
+            return pd.Series(index=series.index)
+
+    def correlation_rank(self, x, y, window):
+        """计算排名相关系数"""
+        try:
+            result = pd.Series(index=x.index)
+            for i in range(window, len(x)):
+                try:
+                    x_window = x.iloc[i-window:i].rank()
+                    y_window = y.iloc[i-window:i].rank()
+                    
+                    # 处理无效值
+                    valid_mask = ~(x_window.isna() | y_window.isna())
+                    if valid_mask.sum() < 2:  # 至少需要2个有效值
+                        result.iloc[i] = np.nan
+                        continue
+                        
+                    x_valid = x_window[valid_mask].values
+                    y_valid = y_window[valid_mask].values
+                    
+                    # 计算相关系数
+                    x_mean = np.mean(x_valid)
+                    y_mean = np.mean(y_valid)
+                    x_std = np.std(x_valid)
+                    y_std = np.std(y_valid)
+                    
+                    # 处理标准差为0的情况
+                    if x_std == 0 or y_std == 0:
+                        result.iloc[i] = np.nan
+                        continue
+                    
+                    # 手动计算相关系数，避免使用 np.corrcoef
+                    x_centered = x_valid - x_mean
+                    y_centered = y_valid - y_mean
+                    correlation = np.sum(x_centered * y_centered) / (x_std * y_std * (len(x_valid) - 1))
+                    
+                    # 确保结果在[-1, 1]范围内
+                    correlation = np.clip(correlation, -1.0, 1.0)
+                    result.iloc[i] = correlation
+                    
+                except Exception as e:
+                    self.logger.debug(f"计算窗口 {i} 的相关系数失败: {str(e)}")
+                    result.iloc[i] = np.nan
+                    
+            return result
+        except Exception as e:
+            self.logger.error(f"计算排名相关系数失败: {str(e)}")
+            return pd.Series(index=x.index)
+
+    def ts_rank(self, series, window):
+        """计算时序排名"""
+        try:
+            result = pd.Series(index=series.index)
+            for i in range(window, len(series)):
+                try:
+                    window_data = series.iloc[i-window:i]
+                    # 处理无效值
+                    valid_data = window_data.dropna()
+                    if len(valid_data) < 2:  # 至少需要2个有效值
+                        result.iloc[i] = np.nan
+                        continue
+                        
+                    result.iloc[i] = valid_data.rank().iloc[-1]
+                except Exception as e:
+                    self.logger.debug(f"计算窗口 {i} 的排名失败: {str(e)}")
+                    result.iloc[i] = np.nan
+                    
+            return result
+        except Exception as e:
+            self.logger.error(f"计算时序排名失败: {str(e)}")
+            return pd.Series(index=series.index)
 
 def ensure_dir_exists(directory):
     """确保目录存在"""
@@ -51,7 +265,7 @@ def save_strategy_results(stock_signals, date_str):
         logging.info(f"策略信号已保存到: {file_path}")
 
 def save_statistics_results(stats_data, date_str):
-    """保存市场统计数据到CSV"""
+    """保存市场���计数据到CSV"""
     ensure_dir_exists(RESULTS_DIR)
     
     file_path = os.path.join(RESULTS_DIR, f'market_stats_{date_str}.csv')
@@ -86,7 +300,7 @@ def statistics(all_data, stocks):
     stats_data = {
         '日期': date_str,
         '涨停数量': len(all_data.loc[(all_data['涨跌幅'] >= 9.5)]),
-        '跌停数量': len(all_data.loc[(all_data['涨跌幅'] <= -9.5)]),
+        '跌停数���': len(all_data.loc[(all_data['涨跌幅'] <= -9.5)]),
         '涨幅大于5%数量': len(all_data.loc[(all_data['涨跌幅'] >= 5)]),
         '跌幅大于5%数量': len(all_data.loc[(all_data['涨跌幅'] <= -5)]),
         '总股票数量': len(stocks)
@@ -148,7 +362,7 @@ def calculate_volume_factor(data):
 def calculate_reversal_factor(data):
     """反转因子：超跌反弹"""
     high = data['最高']
-    low = data['最低']
+    low = data['最���']
     close = data['收盘']
     
     # 计算超跌程度
@@ -224,7 +438,7 @@ def check_sell_signals(code, data, end_date=None):
             current['volume_factor'] < 0.5,  # 量能萎缩
             current['reversal_factor'] > 0.2,  # 上涨乏力
             current['成交量'] < data['成交量'].rolling(window=20).mean().iloc[-1],  # 缩量
-            any(current['收盘'] < data[f'MA{period}'].iloc[-1] for period in MA_PERIODS)  # 跌破均线
+            any(current['收盘'] < data[f'MA{period}'].iloc[-1] for period in MA_PERIODS)  # 跌���均线
         ]
         
         if any(conditions):
