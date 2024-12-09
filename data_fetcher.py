@@ -26,21 +26,13 @@ class DataFetcher:
             if df is None or df.empty:
                 return None
                 
-            # 重命名列
-            df = df.rename(columns={
-                '日期': 'Date', '开盘': 'Open', '收盘': 'Close',
-                '最高': 'High', '最低': 'Low', '成交量': 'Volume',
-                '成交额': 'Amount', '振幅': 'Amplitude', '涨跌幅': 'Change',
-                '涨跌额': 'ChangeAmount', '换手率': 'Turnover'
-            })
-            
             # 设置日期索引
-            df['Date'] = pd.to_datetime(df['Date'])
-            df.set_index('Date', inplace=True)
+            df['日期'] = pd.to_datetime(df['日期'])
+            df.set_index('日期', inplace=True)
             
             # 处理数值列
-            numeric_columns = ['Open', 'High', 'Low', 'Close', 'Volume', 'Amount', 
-                             'Amplitude', 'Change', 'ChangeAmount', 'Turnover']
+            numeric_columns = ['开盘', '最高', '最低', '收盘', '成交量', '成交额', 
+                             '振幅', '涨跌幅', '涨跌额', '换手率']
             
             for col in numeric_columns:
                 if col in df.columns:
@@ -62,31 +54,31 @@ class DataFetcher:
             df = self.process_data(df)
             
             # 设置日期索引
-            if 'Date' in df.columns:
-                df.set_index('Date', inplace=True)
+            if '日期' in df.columns:
+                df.set_index('日期', inplace=True)
             df.index = pd.to_datetime(df.index)
             
             # 计算涨跌幅（如果不存在）
-            if 'Change' not in df.columns:
-                df['Change'] = df['Close'].pct_change() * 100
-            df['Change'] = df['Change'].fillna(0).astype(np.float64)
+            if '涨跌幅' not in df.columns:
+                df['涨跌幅'] = df['收盘'].pct_change() * 100
+            df['涨跌幅'] = df['涨跌幅'].fillna(0).astype(np.float64)
             
             # 添加p_change字段（与涨跌幅相同，保持兼容性）
-            df['p_change'] = df['Change']
+            df['p_change'] = df['涨跌幅']
             
             # 计算成交额（如果不存在）
-            if 'Amount' not in df.columns:
-                df['Amount'] = df['Volume'] * df['Close']
+            if '成交额' not in df.columns:
+                df['成交额'] = df['成交量'] * df['收盘']
                 
             # 计算技术指标
             for period in [5, 10, 20]:
                 # 价格均线
-                df[f'ma{period}'] = df['Close'].rolling(window=period, min_periods=1).mean()
+                df[f'ma{period}'] = df['收盘'].rolling(window=period, min_periods=1).mean()
                 # 成交量均线
-                df[f'vol_ma{period}'] = df['Volume'].rolling(window=period, min_periods=1).mean()
+                df[f'vol_ma{period}'] = df['成交量'].rolling(window=period, min_periods=1).mean()
                 
             # 确保所有计算列的类型为float64
-            calculated_columns = ['Change', 'p_change', 'Amount'] + \
+            calculated_columns = ['涨跌幅', 'p_change', '成交额'] + \
                                [f'ma{p}' for p in [5, 10, 20]] + \
                                [f'vol_ma{p}' for p in [5, 10, 20]]
             
@@ -95,14 +87,14 @@ class DataFetcher:
                     df[col] = df[col].astype(np.float64)
             
             # 确保所有必要的列都存在
-            required_columns = ['Open', 'Close', 'High', 'Low', 'Volume', 'Amount', 'Change', 'p_change']
+            required_columns = ['开盘', '收盘', '最高', '最低', '成交量', '成交额', '涨跌幅', 'p_change']
             missing_columns = [col for col in required_columns if col not in df.columns]
             if missing_columns:
                 self.logger.error(f"数据缺少必要的列: {missing_columns}")
                 return None
             
             # 删除包含NaN的关键数据行
-            key_columns = ['Open', 'Close', 'High', 'Low', 'Volume']
+            key_columns = ['开盘', '收盘', '最高', '最低', '成交量']
             df = df.dropna(subset=key_columns)
             
             return df
@@ -137,7 +129,7 @@ class DataFetcher:
             return None
 
     def fetch_batch(self, codes):
-        """批量获取股票数据"""
+        """批量获取���票数据"""
         results = {}
         for code in codes:
             try:

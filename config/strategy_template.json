@@ -1,0 +1,12 @@
+[
+  "BaseStrategy",
+  "RSRS_Strategy",
+  "Alpha101Strategy",
+  "Alpha191Strategy",
+  "BacktraceMA250Strategy",
+  "EnterStrategy",
+  "KeepIncreasingStrategy",
+  "LowATRStrategy",
+  "LowBacktraceIncreaseStrategy",
+  "TurtleStrategy"
+]

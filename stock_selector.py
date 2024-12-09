@@ -1,15 +1,51 @@
+# -*- encoding: UTF-8 -*-
+
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                               QPushButton, QMessageBox, QListWidget,
-                               QListWidgetItem, QLabel, QFileDialog)
-from PySide6.QtCore import Qt
-import json
-import os
+                             QPushButton, QLabel, QTableWidget, QTableWidgetItem,
+                             QHeaderView, QProgressBar, QMessageBox, QTabWidget)
+from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtGui import QColor, QFont
 from stock_search import StockSearchWidget
 from stock_chart import show_stock_chart
-from work_flow import WorkFlow
+from data_fetcher import DataFetcher
+from strategy.alpha_factors101 import Alpha101Strategy
+from strategy.RSRS import RSRS_Strategy
 from logger_manager import LoggerManager
-from analysis_dialog import show_analysis_dialog, export_analysis_results
-from strategy_selector import show_strategy_selector
+import pandas as pd
+import traceback
+
+class AnalysisThread(QThread):
+    """分析线程"""
+    progress = Signal(int)  # 进度信号
+    result = Signal(tuple)  # 结果信号：(股票代码, 股票名称, 分析结果)
+    error = Signal(str)  # 错误信号
+    
+    def __init__(self, code, name, data_fetcher, strategies):
+        super().__init__()
+        self.code = code
+        self.name = name
+        self.data_fetcher = data_fetcher
+        self.strategies = strategies
+        
+    def run(self):
+        try:
+            # 获取数据
+            data = self.data_fetcher.get_stock_data(self.code)
+            if data is None:
+                self.error.emit(f"获取{self.code} {self.name}数据失败")
+                return
+                
+            # 分析数据
+            results = {}
+            for strategy in self.strategies:
+                strategy_result = strategy.analyze(data)
+                if strategy_result:
+                    results[strategy.name] = strategy_result
+                    
+            self.result.emit((self.code, self.name, results))
+            
+        except Exception as e:
+            self.error.emit(f"分析{self.code} {self.name}失败: {str(e)}")
 
 class StockSelector(QMainWindow):
     """股票选择器主窗口"""
@@ -19,243 +55,212 @@ class StockSelector(QMainWindow):
         self.logger_manager = LoggerManager()
         self.logger = self.logger_manager.get_logger("stock_selector")
         
-        # 选择策略
-        self.strategies = show_strategy_selector(self, self.logger_manager)
-        if not self.strategies:
-            self.logger.warning("未选择任何策略，将使用默认策略")
-        
-        # 初始化工作流
-        self.work_flow = WorkFlow(self.strategies, self.logger_manager)
-        
-        # 初始化自选股列表
-        self.watchlist = []
-        
         self.init_ui()
-        self.load_watchlist()
+        self.init_data()
+        
+    def init_data(self):
+        """初始化数据和策略"""
+        self.data_fetcher = DataFetcher(self.logger_manager)
+        self.strategies = [
+            Alpha101Strategy(),
+            RSRS_Strategy()
+        ]
+        self.analysis_threads = []
         
     def init_ui(self):
         """初始化UI"""
-        self.setWindowTitle("股票选择器")
-        self.resize(800, 600)
+        self.setWindowTitle('股票分析器')
+        self.setMinimumSize(1200, 800)
         
-        # 创建中心部件
+        # 创建中央窗口
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
         # 创建主布局
-        main_layout = QVBoxLayout(central_widget)
+        main_layout = QHBoxLayout(central_widget)
         
-        # 创建工具栏
-        toolbar_layout = QHBoxLayout()
-        
-        # 选择策略按钮
-        strategy_btn = QPushButton("选择策略")
-        strategy_btn.clicked.connect(self.select_strategies)
-        toolbar_layout.addWidget(strategy_btn)
-        
-        # 批量分析按钮
-        batch_analyze_btn = QPushButton("批量分析")
-        batch_analyze_btn.clicked.connect(self.batch_analyze_stocks)
-        toolbar_layout.addWidget(batch_analyze_btn)
-        
-        # 导出结果按钮
-        export_btn = QPushButton("导出结果")
-        export_btn.clicked.connect(self.export_results)
-        toolbar_layout.addWidget(export_btn)
-        
-        # 关于按钮
-        about_btn = QPushButton("关于")
-        about_btn.clicked.connect(self.show_about_dialog)
-        toolbar_layout.addWidget(about_btn)
-        
-        # 添加弹性空间
-        toolbar_layout.addStretch()
-        
-        main_layout.addLayout(toolbar_layout)
-        
-        # 创建左侧面板
+        # 左侧面板
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         
         # 搜索组件
         self.search_widget = StockSearchWidget(logger_manager=self.logger_manager)
-        self.search_widget.stock_selected.connect(self.add_to_watchlist)
+        self.search_widget.stock_selected.connect(self.on_stock_selected)
         left_layout.addWidget(self.search_widget)
         
-        # 自选股列表标签
-        watchlist_label = QLabel("自选股列表")
-        watchlist_label.setStyleSheet("font-weight: bold; margin: 10px 0;")
-        left_layout.addWidget(watchlist_label)
+        # 按钮组
+        button_layout = QHBoxLayout()
+        self.analyze_btn = QPushButton('分析选中股票')
+        self.analyze_btn.clicked.connect(self.analyze_selected_stock)
+        self.batch_analyze_btn = QPushButton('批量分析')
+        self.batch_analyze_btn.clicked.connect(self.batch_analyze)
+        button_layout.addWidget(self.analyze_btn)
+        button_layout.addWidget(self.batch_analyze_btn)
+        left_layout.addLayout(button_layout)
         
-        # 自选股列表
-        self.watchlist_widget = QListWidget()
-        self.watchlist_widget.itemDoubleClicked.connect(self.show_stock_chart)
-        left_layout.addWidget(self.watchlist_widget)
+        # 进度条
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        left_layout.addWidget(self.progress_bar)
         
-        main_layout.addWidget(left_panel)
+        main_layout.addWidget(left_panel, 1)
         
-    def select_strategies(self):
-        """选择策略"""
-        strategies = show_strategy_selector(self, self.logger_manager)
-        if strategies:
-            self.strategies = strategies
-            self.work_flow = WorkFlow(self.strategies, self.logger_manager)
-            self.logger.info(f"已选择 {len(strategies)} 个策略")
+        # 右侧面板（使用选项卡）
+        self.tab_widget = QTabWidget()
         
-    def add_to_watchlist(self, code, name):
-        """添加股票到自选股列表"""
-        try:
-            # 检查是否已存在
-            for stock in self.watchlist:
-                if stock['code'] == code:
-                    self.logger.info(f"股票 {code} 已在自选股列表中")
-                    return
+        # 分析结果表格选项卡
+        self.result_table = QTableWidget()
+        self.setup_result_table()
+        self.tab_widget.addTab(self.result_table, "分析结果")
+        
+        # 信号列表选项卡
+        self.signal_table = QTableWidget()
+        self.setup_signal_table()
+        self.tab_widget.addTab(self.signal_table, "交易信号")
+        
+        main_layout.addWidget(self.tab_widget, 2)
+        
+    def setup_result_table(self):
+        """设置分析结果表格"""
+        self.result_table.setColumnCount(7)
+        self.result_table.setHorizontalHeaderLabels([
+            '股票代码', '股票名称', 'Alpha101_Alpha1', 'Alpha101_Alpha2',
+            'Alpha101_Alpha3', 'Alpha101_Alpha4', 'RARA策略'
+        ])
+        header = self.result_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        
+    def setup_signal_table(self):
+        """设置信号表格"""
+        self.signal_table.setColumnCount(5)
+        self.signal_table.setHorizontalHeaderLabels([
+            '股票代码', '股票名称', '策略', '信号类型', '信号强度'
+        ])
+        header = self.signal_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        
+    def on_stock_selected(self, code, name):
+        """处理股票选择"""
+        self.current_code = code
+        self.current_name = name
+        self.analyze_btn.setEnabled(True)
+        
+    def analyze_selected_stock(self):
+        """分析选中的股票"""
+        if hasattr(self, 'current_code'):
+            self.start_analysis([self.current_code], [self.current_name])
             
-            # 添加到列表
-            stock_info = {'code': code, 'name': name}
-            self.watchlist.append(stock_info)
-            
-            # 添加到界面
-            item = QListWidgetItem(f"{code} - {name}")
-            item.setData(Qt.UserRole, stock_info)
-            self.watchlist_widget.addItem(item)
-            
-            # 保存到文件
-            self.save_watchlist()
-            
-            self.logger.info(f"添加股票到自选股列表: {code} - {name}")
-            
-        except Exception as e:
-            self.logger.error(f"添加股票失败: {str(e)}")
-            QMessageBox.warning(self, "错误", f"添加股票失败: {str(e)}")
-            
-    def show_stock_chart(self, item):
-        """显示股票图表"""
-        try:
-            stock_info = item.data(Qt.UserRole)
-            code = stock_info['code']
-            name = stock_info['name']
-            
-            # 获取股票数据和信号
-            data = self.work_flow.get_stock_data(code)
-            signals = self.work_flow.get_stock_signals(code)
-            
-            # 显示图表对话框
-            show_stock_chart(code, name, data, signals, self, self.logger_manager)
-            
-        except Exception as e:
-            self.logger.error(f"显示图表失败: {str(e)}")
-            QMessageBox.warning(self, "错误", f"显示图表失败: {str(e)}")
-            
-    def batch_analyze_stocks(self):
+    def batch_analyze(self):
         """批量分析自选股"""
         try:
-            if not self.watchlist:
-                QMessageBox.warning(self, "提示", "自选股列表为空")
+            # 从自选股列表获取股票
+            stocks = self.search_widget.stock_df
+            if stocks is None or stocks.empty:
+                QMessageBox.warning(self, "警告", "没有可分析的股票")
                 return
                 
-            results = {}
-            for stock in self.watchlist:
-                try:
-                    result = self.work_flow.analyze_stock(stock['code'])
-                    if result:
-                        results[f"{stock['code']} - {stock['name']}"] = result
-                except Exception as e:
-                    self.logger.error(f"分析股票 {stock['code']} 失败: {str(e)}")
-                    continue
+            codes = stocks['code'].tolist()
+            names = stocks['name'].tolist()
             
-            if results:
-                # 显示分析结果
-                show_analysis_dialog(
-                    "批量分析结果",
-                    "自选股分析",
-                    results,
-                    self,
-                    self.logger_manager
-                )
-            else:
-                QMessageBox.warning(self, "提示", "没有可用的分析结果")
-                
+            # 开始分析
+            self.start_analysis(codes, names)
+            
         except Exception as e:
             self.logger.error(f"批量分析失败: {str(e)}")
-            QMessageBox.warning(self, "错误", f"批量分析失败: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            QMessageBox.critical(self, "错误", f"批量分析失败: {str(e)}")
             
-    def export_results(self):
-        """导出分析结果"""
-        try:
-            if not self.watchlist:
-                QMessageBox.warning(self, "提示", "自选股列表为空")
-                return
-                
-            file_name, _ = QFileDialog.getSaveFileName(
-                self,
-                "导出分析结果",
-                "",
-                "CSV Files (*.csv)"
-            )
+    def start_analysis(self, codes, names):
+        """开始分析流程"""
+        # 清空表格
+        self.result_table.setRowCount(0)
+        self.signal_table.setRowCount(0)
+        
+        # 设置进度条
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setMaximum(len(codes))
+        self.progress_bar.setValue(0)
+        
+        # 创建并启动分析线程
+        self.analysis_threads.clear()
+        for code, name in zip(codes, names):
+            thread = AnalysisThread(code, name, self.data_fetcher, self.strategies)
+            thread.result.connect(self.handle_analysis_result)
+            thread.error.connect(self.handle_analysis_error)
+            thread.finished.connect(lambda: self.progress_bar.setValue(self.progress_bar.value() + 1))
+            self.analysis_threads.append(thread)
+            thread.start()
             
-            if file_name:
-                results = {}
-                for stock in self.watchlist:
-                    try:
-                        result = self.work_flow.analyze_stock(stock['code'])
-                        if result:
-                            results[f"{stock['code']} - {stock['name']}"] = result
-                    except Exception as e:
-                        self.logger.error(f"分析股票 {stock['code']} 失败: {str(e)}")
-                        continue
+    def handle_analysis_result(self, result):
+        """处理分析结果"""
+        code, name, strategy_results = result
+        
+        # 添加到结果表格
+        row = self.result_table.rowCount()
+        self.result_table.insertRow(row)
+        
+        # 设置股票信息
+        self.result_table.setItem(row, 0, QTableWidgetItem(code))
+        self.result_table.setItem(row, 1, QTableWidgetItem(name))
+        
+        # 设置策略结果
+        if 'Alpha101Strategy' in strategy_results:
+            alpha_results = strategy_results['Alpha101Strategy']
+            for i, key in enumerate(['Alpha101Strategy_Alpha1', 'Alpha101Strategy_Alpha2', 
+                                   'Alpha101Strategy_Alpha3', 'Alpha101Strategy_Alpha4']):
+                value = alpha_results.get(key, 'N/A')
+                item = QTableWidgetItem(str(value))
+                self.result_table.setItem(row, i + 2, item)
                 
-                if results:
-                    export_analysis_results(results, file_name)
-                    QMessageBox.information(self, "成功", "分析结果已导出")
+        if 'RARA' in strategy_results:
+            rara_result = strategy_results['RARA']
+            item = QTableWidgetItem(str(rara_result.get('signal', 'N/A')))
+            self.result_table.setItem(row, 6, item)
+            
+        # 添加到信号表格
+        self.add_signals_to_table(code, name, strategy_results)
+        
+    def add_signals_to_table(self, code, name, strategy_results):
+        """添加信号到信号表格"""
+        for strategy_name, results in strategy_results.items():
+            signals = []
+            if strategy_name == 'Alpha101Strategy':
+                signal = results.get('Alpha101Strategy_Alpha101_信号', '')
+                if signal and signal != '无':
+                    signals.append(('Alpha101策略', signal, len(signal.split(';'))))
+            elif strategy_name == 'RARA':
+                signal = results.get('signal', '')
+                if signal and signal != '无':
+                    signals.append(('RARA策略', signal, 1))
+                    
+            for strategy, signal, strength in signals:
+                row = self.signal_table.rowCount()
+                self.signal_table.insertRow(row)
+                
+                self.signal_table.setItem(row, 0, QTableWidgetItem(code))
+                self.signal_table.setItem(row, 1, QTableWidgetItem(name))
+                self.signal_table.setItem(row, 2, QTableWidgetItem(strategy))
+                self.signal_table.setItem(row, 3, QTableWidgetItem(signal))
+                self.signal_table.setItem(row, 4, QTableWidgetItem(str(strength)))
+                
+                # 设置颜色
+                if '买入' in signal or '看多' in signal:
+                    color = QColor(255, 240, 240)  # 浅红色
+                elif '卖出' in signal or '看空' in signal:
+                    color = QColor(240, 255, 240)  # 浅绿色
                 else:
-                    QMessageBox.warning(self, "提示", "没有可用的分析结果")
+                    color = QColor(255, 255, 255)  # 白色
                     
-        except Exception as e:
-            self.logger.error(f"导出结果失败: {str(e)}")
-            QMessageBox.warning(self, "错误", f"导出结果失败: {str(e)}")
-            
-    def save_watchlist(self):
-        """保存自选股列表"""
-        try:
-            watchlist_file = os.path.join("data", "watchlist.json")
-            os.makedirs("data", exist_ok=True)
-            
-            with open(watchlist_file, 'w', encoding='utf-8') as f:
-                json.dump(self.watchlist, f, ensure_ascii=False, indent=2)
-                
-            self.logger.info("保存自选股列表成功")
-            
-        except Exception as e:
-            self.logger.error(f"保存自选股列表失败: {str(e)}")
-            QMessageBox.warning(self, "错误", f"保存自选股列表失败: {str(e)}")
-            
-    def load_watchlist(self):
-        """加载自选股列表"""
-        try:
-            watchlist_file = os.path.join("data", "watchlist.json")
-            if os.path.exists(watchlist_file):
-                with open(watchlist_file, 'r', encoding='utf-8') as f:
-                    self.watchlist = json.load(f)
+                for col in range(5):
+                    self.signal_table.item(row, col).setBackground(color)
                     
-                # 添加到界面
-                for stock in self.watchlist:
-                    item = QListWidgetItem(f"{stock['code']} - {stock['name']}")
-                    item.setData(Qt.UserRole, stock)
-                    self.watchlist_widget.addItem(item)
-                    
-                self.logger.info(f"加载自选股列表成功: {len(self.watchlist)}只股票")
-                
-        except Exception as e:
-            self.logger.error(f"加载自选股列表失败: {str(e)}")
-            QMessageBox.warning(self, "错误", f"加载自选股列表失败: {str(e)}")
-            
-    def show_about_dialog(self):
-        """显示关于对话框"""
-        QMessageBox.about(self, "关于",
-            "股票选择器 v1.0\n\n"
-            "基于PySide6的股票分析工具\n"
-            "支持股票搜索、自选股管理、K线图显示、技术分析等功能\n\n"
-            "作者: Spike\n"
-            "版权所有 © 2024"
-        )
+    def handle_analysis_error(self, error_msg):
+        """处理分析错误"""
+        self.logger.error(error_msg)
+        
+    def closeEvent(self, event):
+        """关闭窗口时清理资源"""
+        for thread in self.analysis_threads:
+            thread.quit()
+            thread.wait()
+        event.accept() 

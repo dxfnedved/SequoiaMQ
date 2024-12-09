@@ -1,55 +1,59 @@
 # -*- encoding: UTF-8 -*-
 import yaml
 import os
-import akshare as ak
-import pandas as pd
+from logger_manager import LoggerManager
 
-def get_valid_stocks():
-    """获取有效的A股列表（剔除ST、退市、科创板和北交所股票）"""
-    try:
-        # 获取所有A股列表
-        stock_info = ak.stock_info_a_code_name()
-        
-        # 过滤条件
-        def is_valid_stock(code, name):
-            # 排除ST股票
-            if 'ST' in name.upper():
-                return False
-            # 排除退市股票
-            if '退' in name:
-                return False
-            # 排除科创板股票
-            if code.startswith('688'):
-                return False
-            # 排除北交所股票
-            if code.startswith('8'):
-                return False
-            # 只保留沪深主板、中小板、创业板
-            return code.startswith(('000', '001', '002', '003', '300', '600', '601', '603', '605'))
-        
-        # 应用过滤条件
-        valid_stocks = stock_info[
-            stock_info.apply(lambda x: is_valid_stock(x['code'], x['name']), axis=1)
-        ]
-        
-        return valid_stocks['code'].tolist()
-    except Exception as e:
-        print(f"获取股票列表失败: {str(e)}")
-        return []
+logger = LoggerManager().get_logger("settings")
 
 def init():
+    """初始化配置"""
     global config
-    global top_list
     
-    # 加载配置文件
-    root_dir = os.path.dirname(os.path.abspath(__file__))
-    config_file = os.path.join(root_dir, 'config.yaml')
-    with open(config_file, 'r', encoding='utf-8') as file:
-        config = yaml.safe_load(file)
-    
-    # 获取所有有效股票
-    top_list = get_valid_stocks()
-    print(f"获取到 {len(top_list)} 只有效股票")
+    try:
+        # 加载配置文件
+        root_dir = os.path.dirname(os.path.abspath(__file__))
+        config_file = os.path.join(root_dir, 'config.yaml')
+        
+        if not os.path.exists(config_file):
+            # 创建默认配置
+            config = {
+                'cron': False,
+                'data_dir': 'data',
+                'cache_dir': 'cache',
+                'log_level': 'INFO',
+                'batch_size': 100,  # 批量处理时的每批大小
+                'analysis': {
+                    'use_cache': True,
+                    'cache_days': 1,
+                    'parallel': True,
+                    'max_workers': 4
+                }
+            }
+            
+            # 保存默认配置
+            with open(config_file, 'w', encoding='utf-8') as f:
+                yaml.dump(config, f, allow_unicode=True)
+            logger.info("创建默认配置文件")
+        else:
+            # 读取现有配置
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+            logger.info("加载配置文件成功")
+            
+        # 创建必要的目录
+        for dir_name in ['data_dir', 'cache_dir']:
+            if dir_name in config:
+                os.makedirs(config[dir_name], exist_ok=True)
+                
+        return config
+        
+    except Exception as e:
+        logger.error(f"初始化配置失败: {str(e)}")
+        raise
 
-def config():
+def get_config():
+    """获取配置"""
+    global config
+    if not 'config' in globals():
+        config = init()
     return config
