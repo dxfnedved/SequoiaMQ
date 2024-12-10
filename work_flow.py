@@ -6,21 +6,19 @@ import data_fetcher
 import pandas as pd
 import os
 from datetime import datetime
-from strategy import (
-    RSRS_Strategy,
-    Alpha101Strategy,
-    Alpha191Strategy,
-    TurtleStrategy,
-    EnterStrategy,
-    LowATRStrategy,
-    LowBacktraceIncreaseStrategy,
-    KeepIncreasingStrategy,
-    BacktraceMA250Strategy
-)
-from logger_manager import LoggerManager
-import traceback
+from strategy.alpha_factors101 import Alpha101Strategy
+from strategy.alpha_factors191 import Alpha191Strategy
+from strategy.RSRS import RSRS_Strategy
+from strategy.turtle_trade import TurtleStrategy
+from strategy.enter import EnterStrategy
+from strategy.low_atr import LowATRStrategy
+from strategy.low_backtrace_increase import LowBacktraceIncreaseStrategy
+from strategy.keep_increasing import KeepIncreasingStrategy
+from strategy.backtrace_ma250 import BacktraceMA250Strategy
 from tqdm import tqdm
+import traceback
 import concurrent.futures
+from logger_manager import LoggerManager
 
 class WorkFlow:
     def __init__(self):
@@ -28,17 +26,17 @@ class WorkFlow:
         self.logger_manager = LoggerManager()
         self.logger = self.logger_manager.get_logger("work_flow")
         
-        # 初始化策略
+        # 初始化所有策略
         self.strategies = [
-            Alpha101Strategy(),
-            RSRS_Strategy(),
-            Alpha191Strategy(),
-            TurtleStrategy(),
-            EnterStrategy(),
-            LowATRStrategy(),
-            LowBacktraceIncreaseStrategy(),
-            KeepIncreasingStrategy(),
-            BacktraceMA250Strategy()
+            Alpha101Strategy(logger_manager=self.logger_manager),
+            Alpha191Strategy(logger_manager=self.logger_manager),
+            RSRS_Strategy(logger_manager=self.logger_manager),
+            TurtleStrategy(logger_manager=self.logger_manager),
+            EnterStrategy(logger_manager=self.logger_manager),
+            LowATRStrategy(logger_manager=self.logger_manager),
+            LowBacktraceIncreaseStrategy(logger_manager=self.logger_manager),
+            KeepIncreasingStrategy(logger_manager=self.logger_manager),
+            BacktraceMA250Strategy(logger_manager=self.logger_manager)
         ]
         
         # 初始化数据获取器
@@ -54,61 +52,58 @@ class WorkFlow:
         if not os.path.exists(self.results_dir):
             os.makedirs(self.results_dir)
             
-        # 当日结果目录
-        self.today_dir = os.path.join(self.results_dir, datetime.now().strftime('%Y%m%d'))
+        # 当日结果目录（使用精确时间戳避免重复）
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        self.today_dir = os.path.join(self.results_dir, timestamp)
         if not os.path.exists(self.today_dir):
             os.makedirs(self.today_dir)
             
-        # 当前时间目录
-        self.current_time_dir = os.path.join(self.today_dir, datetime.now().strftime('%H%M%S'))
-        if not os.path.exists(self.current_time_dir):
-            os.makedirs(self.current_time_dir)
-            
-    def analyze_single_stock(self, stock):
+    def analyze_single_stock(self, code_name_tuple):
         """分析单个股票"""
+        code, name = code_name_tuple
         try:
-            # 处理股票代码和名称
-            code = stock[0] if isinstance(stock, tuple) else stock
-            name = stock[1] if isinstance(stock, tuple) else None
-            
-            # 获取股票数据
-            data = self.data_fetcher.fetch_stock_data(stock)
-            if data is None or len(data) == 0:
-                self.logger.warning(f"获取股票 {stock} 数据失败")
+            # 获取数据
+            data = self.data_fetcher.fetch_stock_data(code)
+            if data is None:
+                self.logger.warning(f"获取股票 {code} {name} 数据失败")
                 return None
                 
-            # 分析数据
+            # 执行策略分析
             stock_result = {
                 '股票代码': code,
-                '股票名称': name
+                '股票名称': name,
+                '分析时间': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
-            signals = []
             
+            # 记录各策略信号
+            signals = []
             for strategy in self.strategies:
                 try:
                     result = strategy.analyze(data)
                     if result:
-                        # 添加策略结果到stock_result
-                        for key, value in result.items():
-                            stock_result[f"{strategy.name}_{key}"] = value
-                            
-                        # 检查是否有信号
-                        signal = result.get('signal', None)
-                        if signal and signal != '无':
-                            signals.append((strategy.name, signal))
+                        # 添加到分析结果
+                        strategy_name = strategy.__class__.__name__
+                        stock_result[f'{strategy_name}_结果'] = result
+                        
+                        # 获取信号
+                        strategy_signals = strategy.get_signals(data)
+                        if strategy_signals:
+                            signals.extend(strategy_signals)
+                            stock_result[f'{strategy_name}_信号'] = [s['type'] for s in strategy_signals]
                             
                 except Exception as e:
-                    self.logger.error(f"策略 {strategy.name} 分析失败: {str(e)}")
+                    self.logger.error(f"策略 {strategy.__class__.__name__} 分析股票 {code} 失败: {str(e)}")
+                    continue
                     
-            return (stock_result, signals) if stock_result else None
+            return stock_result, signals
             
         except Exception as e:
-            self.logger.error(f"分析股票 {stock} 失败: {str(e)}")
-            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            self.logger.error(f"分析股票 {code} 失败: {str(e)}")
+            self.logger.error(traceback.format_exc())
             return None
             
     def prepare(self):
-        """准备数据并执行分析"""
+        """准备分析任务"""
         try:
             # 获取股票列表
             stock_list = utils.get_stock_list()
@@ -116,127 +111,56 @@ class WorkFlow:
                 self.logger.error("获取股票列表失败")
                 return
                 
-            # 获取配置
+            self.logger.info(f"开始分析 {len(stock_list)} 只股票")
+            
+            # 使用线程池并行处理
             config = settings.get_config()
-            batch_size = config.get('batch_size', 100)
-            use_parallel = config.get('analysis', {}).get('parallel', True)
             max_workers = config.get('analysis', {}).get('max_workers', 4)
             
-            # 初始化结果列表
-            analysis_results = []
-            signal_results = []
-            resonance_results = []
-            
-            self.logger.info(f"开始分析 {len(stock_list)} 只股票...")
-            
-            if use_parallel:
-                # 并行处理
-                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    futures = {executor.submit(self.analyze_single_stock, stock): stock for stock in stock_list}
-                    
-                    with tqdm(total=len(stock_list), desc="分析进度") as pbar:
-                        for future in concurrent.futures.as_completed(futures):
-                            stock = futures[future]
-                            try:
-                                result = future.result()
-                                if result:
-                                    stock_result, signals = result
-                                    
-                                    # 添加分析结果
-                                    analysis_results.append(stock_result)
-                                    
-                                    # 添加信号结果
-                                    for strategy_name, signal in signals:
-                                        signal_results.append({
-                                            '股票代码': stock[0],
-                                            '股票名称': stock[1],
-                                            '策略名称': strategy_name,
-                                            '信号类型': signal,
-                                            '触发时间': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                                        })
-                                        
-                                    # 检查策略共振
-                                    if len(signals) >= 2:
-                                        resonance_results.append({
-                                            '股票代码': stock[0],
-                                            '股票名称': stock[1],
-                                            '共振策略': ', '.join(s[0] for s in signals),
-                                            '共振信号': '; '.join(s[1] for s in signals),
-                                            '共振强度': len(signals),
-                                            '触发时间': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                                        })
-                            except Exception as e:
-                                self.logger.error(f"处理股票 {stock[0]} 结果时出错: {str(e)}")
-                            pbar.update(1)
-            else:
-                # 串行处理
-                for stock in tqdm(stock_list, desc="分析进度"):
-                    result = self.analyze_single_stock(stock)
-                    if result:
-                        stock_result, signals = result
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # 提交所有任务
+                future_to_stock = {
+                    executor.submit(self.analyze_single_stock, stock): stock 
+                    for stock in stock_list
+                }
+                
+                # 处理结果
+                results = []
+                for future in tqdm(concurrent.futures.as_completed(future_to_stock), 
+                                 total=len(stock_list),
+                                 desc="分析进度"):
+                    stock = future_to_stock[future]
+                    try:
+                        result = future.result()
+                        if result:
+                            results.append(result)
+                    except Exception as e:
+                        self.logger.error(f"处理股票 {stock[0]} 结果失败: {str(e)}")
                         
-                        # 添加分析结果
-                        analysis_results.append(stock_result)
-                        
-                        # 添加信号结果
-                        for strategy_name, signal in signals:
-                            signal_results.append({
-                                '股票代码': stock[0],
-                                '股票名称': stock[1],
-                                '策略名称': strategy_name,
-                                '信号类型': signal,
-                                '触发时间': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                            })
-                            
-                        # 检查策略共振
-                        if len(signals) >= 2:
-                            resonance_results.append({
-                                '股票代码': stock[0],
-                                '股票名称': stock[1],
-                                '共振策略': ', '.join(s[0] for s in signals),
-                                '共振信号': '; '.join(s[1] for s in signals),
-                                '共振强度': len(signals),
-                                '触发时间': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                            })
-                            
-            # 导出结果
-            self.export_results(analysis_results, signal_results, resonance_results)
-            
+            # 保存结果
+            if results:
+                self.save_results(results)
+                
         except Exception as e:
-            self.logger.error(f"执行分析流程失败: {str(e)}")
+            self.logger.error(f"准备分析任务失败: {str(e)}")
             self.logger.error(traceback.format_exc())
             
-    def export_results(self, analysis_results, signal_results, resonance_results):
-        """导出分析结果"""
+    def save_results(self, results):
+        """保存分析结果"""
         try:
-            # 导出分析结果
-            if analysis_results:
-                analysis_df = pd.DataFrame(analysis_results)
-                analysis_file = os.path.join(self.current_time_dir, 'analysis_results.csv')
-                analysis_df.to_csv(analysis_file, index=False, encoding='utf-8-sig')
-                self.logger.info(f"分析结果已导出到: {analysis_file}")
-                
-            # 导出信号结果
-            if signal_results:
-                signal_df = pd.DataFrame(signal_results)
-                signal_file = os.path.join(self.current_time_dir, 'signal_results.csv')
-                signal_df.to_csv(signal_file, index=False, encoding='utf-8-sig')
-                self.logger.info(f"信号结果已导出到: {signal_file}")
-                
-            # 导出共振结果
-            if resonance_results:
-                resonance_df = pd.DataFrame(resonance_results)
-                resonance_file = os.path.join(self.current_time_dir, 'resonance_results.csv')
-                resonance_df.to_csv(resonance_file, index=False, encoding='utf-8-sig')
-                self.logger.info(f"共振结果已导出到: {resonance_file}")
-                
-            # 输出统计信息
-            self.logger.info(f"分析完成的股票数: {len(analysis_results)}")
-            self.logger.info(f"触发信号的股票数: {len(set(r['股票代码'] for r in signal_results))}")
-            self.logger.info(f"发生策略共振的股票数: {len(resonance_results)}")
+            # 转换为DataFrame
+            df = pd.DataFrame([r[0] for r in results if r])
+            
+            # 保存到CSV文件
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f'analysis_results_{timestamp}.csv'
+            filepath = os.path.join(self.today_dir, filename)
+            df.to_csv(filepath, index=False, encoding='utf-8-sig')
+            
+            self.logger.info(f"分析结果已保存到: {filepath}")
             
         except Exception as e:
-            self.logger.error(f"导出结果失败: {str(e)}")
+            self.logger.error(f"保存分析结果失败: {str(e)}")
             self.logger.error(traceback.format_exc())
 
 

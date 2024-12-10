@@ -10,6 +10,8 @@ from stock_chart import show_stock_chart
 from data_fetcher import DataFetcher
 from strategy.alpha_factors101 import Alpha101Strategy
 from strategy.RSRS import RSRS_Strategy
+from strategy.turtle_trade import TurtleStrategy
+from strategy.low_atr import LowATRStrategy
 from logger_manager import LoggerManager
 import pandas as pd
 import traceback
@@ -64,13 +66,15 @@ class StockSelector(QMainWindow):
         self.data_fetcher = DataFetcher(self.logger_manager)
         self.strategies = [
             Alpha101Strategy(),
-            RSRS_Strategy()
+            RSRS_Strategy(),
+            TurtleStrategy(),
+            LowATRStrategy()
         ]
         self.analysis_threads = []
         
     def init_ui(self):
         """初始化UI"""
-        self.setWindowTitle('股票分���器')
+        self.setWindowTitle('股票分析器')
         self.setMinimumSize(1200, 800)
         
         # 创建中央窗口
@@ -106,7 +110,7 @@ class StockSelector(QMainWindow):
         
         main_layout.addWidget(left_panel, 1)
         
-        # 右侧面板（使用选项���）
+        # 右侧面板（使用选项卡）
         self.tab_widget = QTabWidget()
         
         # 分析结果表格选项卡
@@ -123,10 +127,11 @@ class StockSelector(QMainWindow):
         
     def setup_result_table(self):
         """设置分析结果表格"""
-        self.result_table.setColumnCount(7)
+        self.result_table.setColumnCount(9)
         self.result_table.setHorizontalHeaderLabels([
-            '股票代码', '股票名称', 'Alpha101_Alpha1', 'Alpha101_Alpha2',
-            'Alpha101_Alpha3', 'Alpha101_Alpha4', 'RARA策略'
+            '股票代码', '股票名称', 
+            'Alpha101_Alpha1', 'Alpha101_Alpha2', 'Alpha101_Alpha3', 'Alpha101_Alpha4',
+            'RSRS_score', 'RSRS_slope', 'RSRS_signal'
         ])
         header = self.result_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
@@ -213,10 +218,11 @@ class StockSelector(QMainWindow):
                 item = QTableWidgetItem(str(value))
                 self.result_table.setItem(row, i + 2, item)
                 
-        if 'RARA' in strategy_results:
-            rara_result = strategy_results['RARA']
-            item = QTableWidgetItem(str(rara_result.get('signal', 'N/A')))
-            self.result_table.setItem(row, 6, item)
+        if 'RSRS_Strategy' in strategy_results:
+            rsrs_result = strategy_results['RSRS_Strategy']
+            self.result_table.setItem(row, 6, QTableWidgetItem(str(rsrs_result.get('score', 'N/A'))))
+            self.result_table.setItem(row, 7, QTableWidgetItem(str(rsrs_result.get('slope', 'N/A'))))
+            self.result_table.setItem(row, 8, QTableWidgetItem(str(rsrs_result.get('signal', 'N/A'))))
             
         # 添加到信号表格
         self.add_signals_to_table(code, name, strategy_results)
@@ -229,10 +235,10 @@ class StockSelector(QMainWindow):
                 signal = results.get('Alpha101Strategy_Alpha101_信号', '')
                 if signal and signal != '无':
                     signals.append(('Alpha101策略', signal, len(signal.split(';'))))
-            elif strategy_name == 'RARA':
+            elif strategy_name == 'RSRS_Strategy':
                 signal = results.get('signal', '')
                 if signal and signal != '无':
-                    signals.append(('RARA策略', signal, 1))
+                    signals.append(('RSRS策略', signal, 1))
                     
             for strategy, signal, strength in signals:
                 row = self.signal_table.rowCount()

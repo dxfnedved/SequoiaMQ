@@ -1,29 +1,44 @@
+# -*- encoding: UTF-8 -*-
+
+from logger_manager import LoggerManager
+
 class BaseStrategy:
     """策略基类"""
-    def __init__(self):
-        self.name = "BaseStrategy"
+    def __init__(self, logger_manager=None):
+        # 初始化日志管理器
+        self.logger_manager = logger_manager or LoggerManager()
+        self.logger = self.logger_manager.get_logger(self.__class__.__name__)
         
     def analyze(self, data):
         """
         分析数据
-        Args:
-            data: DataFrame, 包含OHLCV数据
-        Returns:
-            dict: 分析结果
+        :param data: DataFrame 股票数据
+        :return: dict 分析结果
         """
-        raise NotImplementedError("策略必须实现analyze方法")
+        raise NotImplementedError("子类必须实现analyze方法")
         
     def get_signals(self, data):
         """
         获取买卖信号
-        Args:
-            data: DataFrame, 包含OHLCV数据
-        Returns:
-            list: 信号列表，每个信号是一个字典，包含：
-                - date: 信号日期
-                - type: 信号类型（买入/卖出）
-                - strategy: 策略名称
-                - price: 信号价格
-                - 其他策略特定信息
+        :param data: DataFrame 股票数据
+        :return: list 信号列表
         """
-        raise NotImplementedError("策略必须实现get_signals方法") 
+        raise NotImplementedError("子类必须实现get_signals方法")
+        
+    def _validate_data(self, data):
+        """
+        验证数据有效性
+        :param data: DataFrame 股票数据
+        :return: bool 数据是否有效
+        """
+        if data is None or data.empty:
+            self.logger.warning("数据为空")
+            return False
+            
+        required_columns = ['开盘', '最高', '最低', '收盘', '成交量']
+        missing_columns = [col for col in required_columns if col not in data.columns]
+        if missing_columns:
+            self.logger.warning(f"数据缺少必要列: {missing_columns}")
+            return False
+            
+        return True 
