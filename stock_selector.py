@@ -30,7 +30,8 @@ class AnalysisThread(QThread):
     def run(self):
         try:
             # 获取数据
-            data = self.data_fetcher.get_stock_data(self.code)
+            code = self.code[0] if isinstance(self.code, tuple) else self.code
+            data = self.data_fetcher.fetch_stock_data((code, self.name))
             if data is None:
                 self.error.emit(f"获取{self.code} {self.name}数据失败")
                 return
@@ -69,7 +70,7 @@ class StockSelector(QMainWindow):
         
     def init_ui(self):
         """初始化UI"""
-        self.setWindowTitle('股票分析器')
+        self.setWindowTitle('股票分���器')
         self.setMinimumSize(1200, 800)
         
         # 创建中央窗口
@@ -105,7 +106,7 @@ class StockSelector(QMainWindow):
         
         main_layout.addWidget(left_panel, 1)
         
-        # 右侧面板（使用选项卡）
+        # 右侧面板（使用选项���）
         self.tab_widget = QTabWidget()
         
         # 分析结果表格选项卡

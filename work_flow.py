@@ -6,8 +6,17 @@ import data_fetcher
 import pandas as pd
 import os
 from datetime import datetime
-from strategy.alpha_factors101 import Alpha101Strategy
-from strategy.RARA import RARA
+from strategy import (
+    RSRS_Strategy,
+    Alpha101Strategy,
+    Alpha191Strategy,
+    TurtleStrategy,
+    EnterStrategy,
+    LowATRStrategy,
+    LowBacktraceIncreaseStrategy,
+    KeepIncreasingStrategy,
+    BacktraceMA250Strategy
+)
 from logger_manager import LoggerManager
 import traceback
 from tqdm import tqdm
@@ -22,7 +31,14 @@ class WorkFlow:
         # 初始化策略
         self.strategies = [
             Alpha101Strategy(),
-            RARA()
+            RSRS_Strategy(),
+            Alpha191Strategy(),
+            TurtleStrategy(),
+            EnterStrategy(),
+            LowATRStrategy(),
+            LowBacktraceIncreaseStrategy(),
+            KeepIncreasingStrategy(),
+            BacktraceMA250Strategy()
         ]
         
         # 初始化数据获取器
@@ -43,46 +59,52 @@ class WorkFlow:
         if not os.path.exists(self.today_dir):
             os.makedirs(self.today_dir)
             
-    def analyze_single_stock(self, code_name_tuple):
+        # 当前时间目录
+        self.current_time_dir = os.path.join(self.today_dir, datetime.now().strftime('%H%M%S'))
+        if not os.path.exists(self.current_time_dir):
+            os.makedirs(self.current_time_dir)
+            
+    def analyze_single_stock(self, stock):
         """分析单个股票"""
-        code, name = code_name_tuple
         try:
-            # 获取数据
-            data = self.data_fetcher.get_stock_data(code)
-            if data is None:
+            # 处理股票代码和名称
+            code = stock[0] if isinstance(stock, tuple) else stock
+            name = stock[1] if isinstance(stock, tuple) else None
+            
+            # 获取股票数据
+            data = self.data_fetcher.fetch_stock_data(stock)
+            if data is None or len(data) == 0:
+                self.logger.warning(f"获取股票 {stock} 数据失败")
                 return None
                 
-            # 执行策略分析
+            # 分析数据
             stock_result = {
                 '股票代码': code,
-                '股票名称': name,
-                '分析时间': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                '股票名称': name
             }
-            
-            # 记录各策略信号
             signals = []
+            
             for strategy in self.strategies:
-                result = strategy.analyze(data)
-                if result:
-                    # 添加到分析结果
-                    if isinstance(strategy, Alpha101Strategy):
+                try:
+                    result = strategy.analyze(data)
+                    if result:
+                        # 添加策略结果到stock_result
                         for key, value in result.items():
-                            if key != 'Alpha101Strategy_Alpha101_信号':
-                                stock_result[key] = value
-                        signal = result.get('Alpha101Strategy_Alpha101_信号', '无')
-                        if signal != '无':
-                            signals.append(('Alpha101策略', signal))
-                    elif isinstance(strategy, RARA):
-                        signal = result.get('signal', '无')
-                        if signal != '无':
-                            signals.append(('RARA策略', signal))
-                        stock_result['RARA策略信号'] = signal
-                        
-            return stock_result, signals
+                            stock_result[f"{strategy.name}_{key}"] = value
+                            
+                        # 检查是否有信号
+                        signal = result.get('signal', None)
+                        if signal and signal != '无':
+                            signals.append((strategy.name, signal))
+                            
+                except Exception as e:
+                    self.logger.error(f"策略 {strategy.name} 分析失败: {str(e)}")
+                    
+            return (stock_result, signals) if stock_result else None
             
         except Exception as e:
-            self.logger.error(f"分析股票 {code} 失败: {str(e)}")
-            self.logger.error(traceback.format_exc())
+            self.logger.error(f"分析股票 {stock} 失败: {str(e)}")
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
             return None
             
     def prepare(self):
@@ -187,26 +209,24 @@ class WorkFlow:
     def export_results(self, analysis_results, signal_results, resonance_results):
         """导出分析结果"""
         try:
-            timestamp = datetime.now().strftime('%H%M%S')
-            
             # 导出分析结果
             if analysis_results:
                 analysis_df = pd.DataFrame(analysis_results)
-                analysis_file = os.path.join(self.today_dir, f'analysis_results_{timestamp}.csv')
+                analysis_file = os.path.join(self.current_time_dir, 'analysis_results.csv')
                 analysis_df.to_csv(analysis_file, index=False, encoding='utf-8-sig')
                 self.logger.info(f"分析结果已导出到: {analysis_file}")
                 
             # 导出信号结果
             if signal_results:
                 signal_df = pd.DataFrame(signal_results)
-                signal_file = os.path.join(self.today_dir, f'signal_results_{timestamp}.csv')
+                signal_file = os.path.join(self.current_time_dir, 'signal_results.csv')
                 signal_df.to_csv(signal_file, index=False, encoding='utf-8-sig')
                 self.logger.info(f"信号结果已导出到: {signal_file}")
                 
             # 导出共振结果
             if resonance_results:
                 resonance_df = pd.DataFrame(resonance_results)
-                resonance_file = os.path.join(self.today_dir, f'resonance_results_{timestamp}.csv')
+                resonance_file = os.path.join(self.current_time_dir, 'resonance_results.csv')
                 resonance_df.to_csv(resonance_file, index=False, encoding='utf-8-sig')
                 self.logger.info(f"共振结果已导出到: {resonance_file}")
                 

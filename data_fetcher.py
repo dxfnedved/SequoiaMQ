@@ -103,9 +103,13 @@ class DataFetcher:
             self.logger.error(f"处理股票数据失败: {str(e)}")
             return None
 
-    def fetch_stock_data(self, code, start_date=None, end_date=None):
+    def fetch_stock_data(self, stock, start_date=None, end_date=None):
         """获取单只股票的历史数据"""
         try:
+            # 处理股票代码（可能是元组或字符串）
+            code = stock[0] if isinstance(stock, tuple) else stock
+            stock_name = stock[1] if isinstance(stock, tuple) else None
+            
             # 如果没有指定日期，默认获取近一年的数据
             if start_date is None:
                 start_date = (datetime.now() - timedelta(days=365)).strftime('%Y%m%d')
@@ -119,28 +123,30 @@ class DataFetcher:
             df = self.process_stock_data(df)
             
             if df is None or df.empty:
-                self.logger.error(f"获取股票 {code} 数据失败")
+                self.logger.error(f"获取股票 {stock} 数据失败")
                 return None
                 
             return df
             
         except Exception as e:
-            self.logger.error(f"获取股票 {code} 数据时出错: {str(e)}")
+            self.logger.error(f"获取股票 {stock} 数据时出错: {str(e)}")
             return None
 
-    def fetch_batch(self, codes):
-        """批量获取���票数据"""
+    def fetch_batch(self, stocks):
+        """批量获取股票数据"""
         results = {}
-        for code in codes:
+        for stock in stocks:
             try:
-                data = self.fetch_stock_data(code)
+                data = self.fetch_stock_data(stock)
                 if data is not None:
+                    # 使用股票代码作为键（如果是元组，取第一个元素）
+                    code = stock[0] if isinstance(stock, tuple) else stock
                     with self.lock:
                         results[code] = data
                         if self.progress_bar:
                             self.progress_bar.update(1)
             except Exception as e:
-                self.logger.error(f"获取股票 {code} 数据失败: {str(e)}")
+                self.logger.error(f"获取股票 {stock} 数据失败: {str(e)}")
         return results
 
     def run(self, stock_list):

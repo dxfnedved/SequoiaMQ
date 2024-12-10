@@ -33,13 +33,13 @@ def get_stock_list():
             # 只保留沪深主板、中小板、创业板
             return code.startswith(('000', '001', '002', '003', '300', '600', '601', '603', '605'))
         
-        # 应用过滤条件
+        # 应用过滤���件
         valid_stocks = stock_info[
             stock_info.apply(lambda x: is_valid_stock(x['code'], x['name']), axis=1)
         ]
         
-        # 转换为(code, name)元组列表
-        stock_list = list(zip(valid_stocks['code'].tolist(), valid_stocks['name'].tolist()))
+        # 转换为(code, name)元组列表，确保code是字符串类型
+        stock_list = [(str(code), name) for code, name in zip(valid_stocks['code'], valid_stocks['name'])]
         logger.info(f"获取到 {len(stock_list)} 只有效股票")
         return stock_list
         
