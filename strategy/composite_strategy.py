@@ -276,6 +276,8 @@ class CompositeStrategy(BaseStrategy):
                 'skdj_k': entry['k'],
                 'skdj_d': entry['d'],
                 'rsi': entry['rsi'],
+                'skdj_signal': entry['skdj_signal'],
+                'rsi_signal': entry['rsi_signal'],
                 'initial_stop': initial_stop,
                 'trailing_stop': trailing_stop,
                 'platform_breakthrough': platform_signal,
@@ -304,9 +306,16 @@ class CompositeStrategy(BaseStrategy):
                     'strategy': self.name,
                     'price': data['收盘'].iloc[-1],
                     'trend': result['trend'],
-                    'entry_signal': result['entry_signal'],
+                    'skdj_signal': result['skdj_signal'],
+                    'rsi_signal': result['rsi_signal'],
+                    'skdj_k': result['skdj_k'],
+                    'skdj_d': result['skdj_d'],
+                    'rsi': result['rsi'],
                     'initial_stop': result['initial_stop'],
-                    'trailing_stop': result['trailing_stop']
+                    'trailing_stop': result['trailing_stop'],
+                    'platform_breakthrough': result['platform_breakthrough'],
+                    'high_tight_flag': result['high_tight_flag'],
+                    'parking_apron': result['parking_apron']
                 })
                 
             return signals
