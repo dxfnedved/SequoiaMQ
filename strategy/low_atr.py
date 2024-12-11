@@ -6,8 +6,8 @@ from strategy.base import BaseStrategy
 
 class LowATRStrategy(BaseStrategy):
     """低波动策略"""
-    def __init__(self):
-        super().__init__()
+    def __init__(self, logger_manager=None):
+        super().__init__(logger_manager)
         self.name = "LowATRStrategy"
         self.atr_window = 14  # ATR计算周期
         self.ma_window = 20   # 均线周期

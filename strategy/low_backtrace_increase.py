@@ -7,8 +7,8 @@ from strategy.base import BaseStrategy
 
 class LowBacktraceIncreaseStrategy(BaseStrategy):
     """低回撤增长策略"""
-    def __init__(self):
-        super().__init__()
+    def __init__(self, logger_manager=None):
+        super().__init__(logger_manager)
         self.name = "LowBacktraceIncreaseStrategy"
         self.window_size = 20  # 观察窗口
         self.backtrace_threshold = 0.1  # 回撤阈值
@@ -86,7 +86,7 @@ class LowBacktraceIncreaseStrategy(BaseStrategy):
             }
             
         except Exception as e:
-            print(f"低回撤增长策略分析失败: {str(e)}")
+            print(f"低回��增长策略分析失败: {str(e)}")
             return None
             
     def get_signals(self, data):

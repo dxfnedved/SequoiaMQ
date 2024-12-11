@@ -13,8 +13,8 @@ class LoggerManager:
         self.date = datetime.now().strftime('%Y%m%d')
         
         # 创建日志目录结构
-        self.log_dir = os.path.join(base_dir, 'logs', self.date, self.timestamp)
-        self.result_dir = os.path.join(base_dir, 'results', self.date, self.timestamp)
+        self.log_dir = os.path.join(base_dir, 'logs', self.date)
+        self.result_dir = os.path.join(base_dir, 'results', self.date)
         
         # 创建必要的目录
         os.makedirs(self.log_dir, exist_ok=True)
@@ -34,103 +34,118 @@ class LoggerManager:
         
         # 创建格式化器
         formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            '%(asctime)s - %(levelname)s - %(message)s'
         )
         
-        # 创建控制台处理器（INFO级别）
+        # 创建控制台处理器（只显示ERROR和关键INFO）
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(logging.INFO)
         console_handler.setFormatter(formatter)
+        console_handler.addFilter(self.filter_console_logs)
         root_logger.addHandler(console_handler)
         
-        # 创建主日志文件处理器（INFO级别）
+        # 创建主日志文件处理器（ERROR和关键INFO）
         main_log_file = os.path.join(self.log_dir, "main.log")
         file_handler = logging.FileHandler(main_log_file, encoding='utf-8')
         file_handler.setLevel(logging.INFO)
         file_handler.setFormatter(formatter)
+        file_handler.addFilter(self.filter_main_logs)
         root_logger.addHandler(file_handler)
         
-        # 创建调试日志文件处理器（DEBUG级别）
+        # 创建调试日志文件处理器（所有DEBUG信息）
         debug_log_file = os.path.join(self.log_dir, "debug.log")
         debug_handler = logging.FileHandler(debug_log_file, encoding='utf-8')
         debug_handler.setLevel(logging.DEBUG)
         debug_handler.setFormatter(formatter)
         root_logger.addHandler(debug_handler)
         
-        # 设置loguru
-        logger.remove()  # 移除默认处理器
+    def filter_console_logs(self, record):
+        """过滤控制台日志"""
+        # 始终显示错误和警告
+        if record.levelno >= logging.WARNING:
+            return True
+            
+        # 只显示特定的INFO消息
+        if record.levelno == logging.INFO:
+            important_messages = [
+                "开始分析",
+                "分析进度",
+                "分析完成",
+                "发现买入信号",
+                "发现卖出信号"
+            ]
+            return any(msg in record.msg for msg in important_messages)
+            
+        return False
         
-        # 添加loguru控制台处理器
-        logger.add(
-            sys.stdout,
-            format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-            level="INFO",
-            colorize=True
-        )
+    def filter_main_logs(self, record):
+        """过滤主日志文件内容"""
+        # 记录所有错误和警告
+        if record.levelno >= logging.WARNING:
+            return True
+            
+        # 记录重要的INFO消息
+        if record.levelno == logging.INFO:
+            important_messages = [
+                "开始分析",
+                "分析完成",
+                "发现买入信号",
+                "发现卖出信号",
+                "保存结果"
+            ]
+            return any(msg in record.msg for msg in important_messages)
+            
+        return False
         
-        # 添加loguru文件处理器
-        logger.add(
-            os.path.join(self.log_dir, "loguru.log"),
-            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-            level="DEBUG",
-            rotation="1 day",
-            encoding="utf-8"
-        )
-        
-        # 为每个模块创建单独的日志记录器
-        self.setup_module_loggers()
-    
     def setup_module_loggers(self):
         """为所有模块设置日志记录器"""
         modules = {
-            'data_fetcher': 'loguru',
-            'work_flow': 'logging',
-            'stock_selector': 'logging',
-            'stock_chart': 'loguru',
-            'strategy': 'logging'
+            'data_fetcher': logging.DEBUG,
+            'work_flow': logging.INFO,
+            'stock_selector': logging.INFO,
+            'stock_chart': logging.DEBUG,
+            'strategy': logging.DEBUG
         }
         
-        for module_name, logger_type in modules.items():
-            if logger_type == 'logging':
-                self.setup_logging_logger(module_name)
-            else:
-                self.setup_loguru_logger(module_name)
+        for module_name, level in modules.items():
+            self.setup_module_logger(module_name, level)
     
-    def setup_logging_logger(self, module_name):
-        """设置logging类型的日志记录器"""
+    def setup_module_logger(self, module_name, level):
+        """设置模块日志记录器"""
         logger = logging.getLogger(module_name)
-        logger.setLevel(logging.DEBUG)
+        logger.setLevel(level)
         logger.propagate = False  # 避免日志重复
         
         # 创建格式化器
         formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            '%(asctime)s - %(levelname)s - %(message)s'
         )
         
         # 创建文件处理器
         log_file = os.path.join(self.log_dir, f"{module_name}.log")
         handler = logging.FileHandler(log_file, encoding='utf-8')
-        handler.setLevel(logging.DEBUG)
+        handler.setLevel(level)
         handler.setFormatter(formatter)
+        
+        # 添加过滤器
+        if module_name == 'work_flow':
+            handler.addFilter(self.filter_main_logs)
+            
         logger.addHandler(handler)
+        
+        # 如果是work_flow模块，添加控制台处理器
+        if module_name == 'work_flow':
+            console_handler = logging.StreamHandler(sys.stdout)
+            console_handler.setLevel(logging.INFO)
+            console_handler.setFormatter(formatter)
+            console_handler.addFilter(self.filter_console_logs)
+            logger.addHandler(console_handler)
     
-    def setup_loguru_logger(self, module_name):
-        """设置loguru类型的日志记录器"""
-        logger.add(
-            os.path.join(self.log_dir, f"{module_name}.log"),
-            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-            filter=lambda record: record["extra"].get("name") == module_name,
-            level="DEBUG",
-            rotation="1 day",
-            encoding="utf-8"
-        )
-    
-    def get_logger(self, name):
+    def get_logger(self, name, propagate=False):
         """获取指定模块的日志记录器"""
-        if name in ['data_fetcher', 'stock_chart']:
-            return logger.bind(name=name)
-        else:
-            return logging.getLogger(name)
+        logger = logging.getLogger(name)
+        logger.propagate = propagate
+        return logger
     
     def get_result_path(self, filename):
         """获取结果文件的完整路径"""

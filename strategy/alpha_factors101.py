@@ -4,20 +4,19 @@ import numpy as np
 import pandas as pd
 import talib as ta
 from strategy.base import BaseStrategy
-import logging
+from logger_manager import LoggerManager
 import traceback
 
 class Alpha101Strategy(BaseStrategy):
     """Alpha101策略"""
-    def __init__(self):
-        super().__init__()
+    def __init__(self, logger_manager=None):
+        super().__init__(logger_manager)
         self.name = "Alpha101Strategy"
         self.window_size = 20  # 计算窗口
         self.alpha1_threshold = 0.3  # Alpha1阈值
         self.alpha2_threshold = 0.2  # Alpha2阈值
         self.alpha3_threshold = -0.3  # Alpha3阈值
         self.alpha4_threshold = -0.25  # Alpha4阈值
-        self.logger = logging.getLogger('Alpha101_Strategy')
         
     def prepare_data(self, data):
         """准备数据"""
@@ -53,7 +52,7 @@ class Alpha101Strategy(BaseStrategy):
                 'f61': '日期'
             }
             
-            # 检查是否是东方财富的数据格式
+            # 检查是否是东方财富��数据格式
             if all(col.startswith('f') for col in df.columns if col != 'date'):
                 self.logger.info("检测到东方财富数据格式，进行转换")
                 rename_map = {k: v for k, v in eastmoney_map.items() if k in df.columns}

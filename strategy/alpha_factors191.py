@@ -4,11 +4,13 @@ import numpy as np
 import pandas as pd
 import talib as ta
 from strategy.base import BaseStrategy
+from logger_manager import LoggerManager
+import traceback
 
 class Alpha191Strategy(BaseStrategy):
     """Alpha191策略"""
-    def __init__(self):
-        super().__init__()
+    def __init__(self, logger_manager=None):
+        super().__init__(logger_manager)
         self.name = "Alpha191Strategy"
         self.window_size = 20  # 计算窗口
         self.alpha5_threshold = 0.3  # Alpha5阈值

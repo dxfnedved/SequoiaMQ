@@ -4,8 +4,8 @@ from strategy.base import BaseStrategy
 
 class RSRS_Strategy(BaseStrategy):
     """阻力支撑相对强度策略"""
-    def __init__(self):
-        super().__init__()
+    def __init__(self, logger_manager=None):
+        super().__init__(logger_manager)
         self.name = "RSRS_Strategy"
         self.window_size = 18  # 计算斜率的窗口大小
         self.score_threshold = 0.7  # 标准分阈值

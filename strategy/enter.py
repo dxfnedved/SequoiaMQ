@@ -3,12 +3,12 @@
 import numpy as np
 import pandas as pd
 import talib as ta
-from . import BaseStrategy
+from strategy.base import BaseStrategy
 
 class EnterStrategy(BaseStrategy):
     """入场策略"""
-    def __init__(self):
-        super().__init__()
+    def __init__(self, logger_manager=None):
+        super().__init__(logger_manager)
         self.name = "EnterStrategy"
         self.threshold = 30  # 突破观察期
         self.volume_ratio = 1.5  # 放量倍数

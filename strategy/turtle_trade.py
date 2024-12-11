@@ -5,12 +5,12 @@ BALANCE = 200000
 
 import numpy as np
 import pandas as pd
-from . import BaseStrategy
+from strategy.base import BaseStrategy
 
 class TurtleStrategy(BaseStrategy):
     """海龟交易策略"""
-    def __init__(self):
-        super().__init__()
+    def __init__(self, logger_manager=None):
+        super().__init__(logger_manager)
         self.name = "TurtleStrategy"
         self.window_size = 20  # N日突破
         self.atr_window = 20   # ATR周期

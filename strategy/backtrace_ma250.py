@@ -7,8 +7,8 @@ from strategy.base import BaseStrategy
 
 class BacktraceMA250Strategy(BaseStrategy):
     """回踩年线策略"""
-    def __init__(self):
-        super().__init__()
+    def __init__(self, logger_manager=None):
+        super().__init__(logger_manager)
         self.name = "BacktraceMA250Strategy"
         self.ma_window = 250  # 年线周期
         self.backtrace_threshold = 0.05  # 回踩阈值
