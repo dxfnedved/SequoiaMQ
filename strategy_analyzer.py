@@ -5,6 +5,8 @@ from strategy.RSRS import RSRS_Strategy
 from strategy.turtle_trade import TurtleStrategy
 from strategy.low_atr import LowATRStrategy
 from strategy.composite_strategy import CompositeStrategy
+from strategy.backtrace_ma250 import BacktraceMA250Strategy
+from strategy.alpha_factors191 import Alpha191Strategy
 from logger_manager import LoggerManager
 
 class StrategyAnalyzer:
@@ -21,7 +23,9 @@ class StrategyAnalyzer:
             'RSRS': RSRS_Strategy(logger_manager=self.logger_manager),
             'Turtle': TurtleStrategy(logger_manager=self.logger_manager),
             'LowATR': LowATRStrategy(logger_manager=self.logger_manager),
-            'Composite': CompositeStrategy(logger_manager=self.logger_manager)
+            'Composite': CompositeStrategy(logger_manager=self.logger_manager),
+            'BacktraceMA250': BacktraceMA250Strategy(logger_manager=self.logger_manager),
+            'Alpha191': Alpha191Strategy(logger_manager=self.logger_manager)
         }
         print(f"已加载 {len(self.strategies)} 个策略")
 

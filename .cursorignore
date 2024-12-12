@@ -1,0 +1,16 @@
+# Add directories or file patterns to ignore during indexing (e.g. foo/ or *.csv)
+.json
+.csv
+.xlsx
+.xls
+.db
+.sqlite
+.sqlite3
+.db3
+.db-shm
+.db-wal
+.db-journal
+/data
+/cache
+/logs
+/results
