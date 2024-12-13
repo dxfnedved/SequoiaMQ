@@ -20,12 +20,19 @@ def get_stock_name_dict():
 
 def process_stock(args):
     """处理单个股票的静态方法（用于多进程）"""
-    stock, logger_manager = args
+    stock, logger_manager, checkpoint_file = args
     try:
         data_fetcher = DataFetcher(logger_manager=logger_manager)
         strategy_analyzer = StrategyAnalyzer(logger_manager=logger_manager)
         
         code = stock['code'] if isinstance(stock, dict) else stock
+        
+        # 检查是否已处理过
+        if os.path.exists(checkpoint_file):
+            with open(checkpoint_file, 'r') as f:
+                processed_stocks = json.load(f)
+            if code in processed_stocks:
+                return None
         
         # 检查缓存
         cache_file = f'cache/stock_data_{code}.pkl'
@@ -74,6 +81,17 @@ def process_stock(args):
             with open(result_file, 'w', encoding='utf-8') as f:
                 json.dump(processed_result, f, indent=2, ensure_ascii=False)
             
+            # 更新检查点
+            if os.path.exists(checkpoint_file):
+                with open(checkpoint_file, 'r') as f:
+                    processed_stocks = json.load(f)
+            else:
+                processed_stocks = []
+            
+            processed_stocks.append(code)
+            with open(checkpoint_file, 'w') as f:
+                json.dump(processed_stocks, f)
+            
             return processed_result
         
         return None
@@ -98,9 +116,13 @@ class WorkFlow:
         
         # 设置批处理参数
         self.BATCH_SIZE = 50
+        self.BATCH_DELAY = 5  # 批次间延迟（秒）
         
         # 获取股票名称字典
         self.stock_names = get_stock_name_dict()
+        
+        # 检查点文件
+        self.checkpoint_file = 'data/checkpoint.json'
 
     def prepare(self):
         """准备工作"""
@@ -152,23 +174,35 @@ class WorkFlow:
             start_time = time.time()
             
             # 确定进程数（使用CPU核心数的2倍，因为涉及I/O操作）
-            num_processes = min(cpu_count() * 2, 16)  # 最多使用16个进程
+            num_processes = min(cpu_count() * 2, 8)  # 最多使用8个进程，避免过多并发请求
             print(f"使用{num_processes}个进程进行并行处理")
             
             # 将股票列表分成多个批次
             batches = [stock_list[i:i + self.BATCH_SIZE] for i in range(0, len(stock_list), self.BATCH_SIZE)]
             
             # 准备进程参数
-            process_args = [(stock, self.logger_manager) for batch in batches for stock in batch]
+            process_args = [(stock, self.logger_manager, self.checkpoint_file) for batch in batches for stock in batch]
             
             # 使用进程池处理
-            with Pool(num_processes) as pool:
-                results = []
-                for i, result in enumerate(pool.imap_unordered(process_stock, process_args), 1):
-                    if result:
-                        results.append(result)
-                    progress = min((i / total) * 100, 100)
-                    print(f"\r处理进度: {progress:.1f}% ({i}/{total})", end='', flush=True)
+            results = []
+            for batch_idx, batch in enumerate(batches):
+                print(f"\n处理第 {batch_idx + 1}/{len(batches)} 批...")
+                
+                with Pool(num_processes) as pool:
+                    batch_args = [(stock, self.logger_manager, self.checkpoint_file) for stock in batch]
+                    batch_results = []
+                    for i, result in enumerate(pool.imap_unordered(process_stock, batch_args), 1):
+                        if result:
+                            batch_results.append(result)
+                        progress = min((batch_idx * self.BATCH_SIZE + i) / total * 100, 100)
+                        print(f"\r处理进度: {progress:.1f}% ({batch_idx * self.BATCH_SIZE + i}/{total})", end='', flush=True)
+                
+                results.extend(batch_results)
+                
+                # 批次间延迟
+                if batch_idx < len(batches) - 1:
+                    print(f"\n等待 {self.BATCH_DELAY} 秒后处理下一批...")
+                    time.sleep(self.BATCH_DELAY)
             
             print("\n")  # 换行
             

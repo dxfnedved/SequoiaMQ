@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import talib as ta
 from strategy.base import BaseStrategy
 
 class Alpha191Strategy(BaseStrategy):
@@ -10,10 +11,14 @@ class Alpha191Strategy(BaseStrategy):
         super().__init__(logger_manager)
         self.name = "Alpha191Strategy"
         # 设置阈值参数
-        self.alpha1_threshold = 0.02  # 趋势强度阈值
-        self.alpha2_threshold = 0.015  # 动量阈值
-        self.alpha3_threshold = 0.02  # 反转阈值
-        self.alpha4_threshold = 0.025  # 波动率阈值
+        self.alpha1_threshold = 0.015  # 趋势强度阈值（降低）
+        self.alpha2_threshold = 0.012  # 动量阈值（降低）
+        self.alpha3_threshold = 0.015  # 反转阈值（降低）
+        self.alpha4_threshold = 0.02  # 波动率阈值（降低）
+        self.alpha5_threshold = 0.01  # 趋势确认阈值（降低）
+        self.volume_threshold = 1.5  # 成交量放大倍数（降低）
+        self.ma_periods = [5, 10, 20, 60]  # 均线周期
+        self.rsi_threshold = 45  # RSI阈值（降低）
         
     def calculate_alpha1(self, data):
         """计算 Alpha1: 趋势强度指标"""
@@ -89,6 +94,52 @@ class Alpha191Strategy(BaseStrategy):
         except Exception as e:
             self.logger.error(f"计算 Alpha4 失败: {str(e)}")
             return None
+            
+    def calculate_alpha5(self, data):
+        """计算 Alpha5: ��势确认指标"""
+        try:
+            close = data['收盘']
+            
+            # 计算多个周期的均线
+            mas = {}
+            for period in self.ma_periods:
+                mas[period] = close.rolling(period).mean()
+            
+            # 计算均线多头排列得分
+            scores = pd.Series(0, index=close.index)
+            for i in range(len(self.ma_periods)-1):
+                for j in range(i+1, len(self.ma_periods)):
+                    p1, p2 = self.ma_periods[i], self.ma_periods[j]
+                    scores += (mas[p1] > mas[p2]).astype(int)
+                    
+            # 归一化得分
+            max_scores = len(self.ma_periods) * (len(self.ma_periods) - 1) / 2
+            trend_score = scores / max_scores
+            return trend_score
+            
+        except Exception as e:
+            self.logger.error(f"计算 Alpha5 失败: {str(e)}")
+            return None
+            
+    def check_volume_surge(self, data):
+        """检查成交量放大"""
+        try:
+            volume = data['成交量']
+            volume_ma = volume.rolling(20).mean()
+            return volume.iloc[-1] > volume_ma.iloc[-1] * self.volume_threshold
+        except Exception as e:
+            self.logger.error(f"检查成交量失败: {str(e)}")
+            return False
+            
+    def check_rsi_condition(self, data):
+        """检查RSI条件"""
+        try:
+            close = data['收盘'].values
+            rsi = ta.RSI(close, timeperiod=14)
+            return rsi[-1] > self.rsi_threshold  # 只要RSI大于阈值即可
+        except Exception as e:
+            self.logger.error(f"检查RSI失败: {str(e)}")
+            return False
 
     def analyze(self, data):
         """分析数据"""
@@ -101,8 +152,9 @@ class Alpha191Strategy(BaseStrategy):
             alpha2 = self.calculate_alpha2(data)
             alpha3 = self.calculate_alpha3(data)
             alpha4 = self.calculate_alpha4(data)
+            alpha5 = self.calculate_alpha5(data)
             
-            if any(x is None for x in [alpha1, alpha2, alpha3, alpha4]):
+            if any(x is None for x in [alpha1, alpha2, alpha3, alpha4, alpha5]):
                 return None
                 
             # 获取最新值
@@ -110,6 +162,11 @@ class Alpha191Strategy(BaseStrategy):
             latest_alpha2 = alpha2.iloc[-1]
             latest_alpha3 = alpha3.iloc[-1]
             latest_alpha4 = alpha4.iloc[-1]
+            latest_alpha5 = alpha5.iloc[-1]
+            
+            # 检查成交量和RSI条件
+            volume_surge = self.check_volume_surge(data)
+            rsi_condition = self.check_rsi_condition(data)
             
             # 综合信号判断
             buy_signals = 0
@@ -139,10 +196,17 @@ class Alpha191Strategy(BaseStrategy):
             elif latest_alpha4 < -self.alpha4_threshold:
                 sell_signals += 1
                 
-            # 确定最终信号
-            if buy_signals >= 3:  # 至少3个因子支持买入
+            # Alpha5 信号（趋势确认）
+            if latest_alpha5 > self.alpha5_threshold:
+                buy_signals += 1
+            elif latest_alpha5 < -self.alpha5_threshold:
+                sell_signals += 1
+                
+            # 确定最终信号（放宽条件）
+            if (buy_signals >= 3 and  # 至少3个因子支持买入（降低）
+                (volume_surge or latest_alpha5 > 0)):  # 成交量或趋势任一满足即可
                 signal = "买入"
-            elif sell_signals >= 3:  # 至少3个因子支持卖出
+            elif sell_signals >= 3:  # 卖出信号保持相对敏感
                 signal = "卖出"
             else:
                 signal = "无"
@@ -152,6 +216,9 @@ class Alpha191Strategy(BaseStrategy):
                 'Alpha2': latest_alpha2,
                 'Alpha3': latest_alpha3,
                 'Alpha4': latest_alpha4,
+                'Alpha5': latest_alpha5,
+                'volume_surge': volume_surge,
+                'rsi_condition': rsi_condition,
                 'buy_signals': buy_signals,
                 'sell_signals': sell_signals,
                 'signal': signal
@@ -180,6 +247,9 @@ class Alpha191Strategy(BaseStrategy):
                     'alpha2': result['Alpha2'],
                     'alpha3': result['Alpha3'],
                     'alpha4': result['Alpha4'],
+                    'alpha5': result['Alpha5'],
+                    'volume_surge': result['volume_surge'],
+                    'rsi_condition': result['rsi_condition'],
                     'buy_signals': result['buy_signals'],
                     'sell_signals': result['sell_signals']
                 })
