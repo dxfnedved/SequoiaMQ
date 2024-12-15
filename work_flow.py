@@ -14,6 +14,7 @@ from multiprocessing import Pool, cpu_count
 import time
 import traceback
 import random
+import utils  # 添加utils模块导入
 
 def get_stock_name_dict():
     """获取股票代码到名称的映射字典"""
@@ -57,11 +58,19 @@ def process_stock(args):
             processed_stocks = []
         
         # 获取数据
-        data = data_fetcher.get_stock_data(stock)  # 直接传入原始stock对象
-        if data is None or data.empty:
-            logger.error(f"股票 {code} 数据获取失败或为空")
+        data = data_fetcher.get_stock_data(stock)
+        if data is None:
+            logger.error(f"股票 {code} 数据获取失败")
             return None
             
+        if data.empty:
+            logger.error(f"股票 {code} 数据为空")
+            return None
+            
+        # 记录数据来源
+        from_cache = data_fetcher.is_from_cache(code)
+        logger.info(f"股票 {code} 数据来源: {'缓存' if from_cache else '实时获取'}")
+        
         # 分析数据
         result = strategy_analyzer.analyze(data, code)
         
@@ -73,7 +82,9 @@ def process_stock(args):
                 'buy_signals': 0,
                 'sell_signals': 0,
                 'strategies': [],
-                'signal_details': []
+                'signal_details': [],
+                'from_cache': from_cache,
+                'data_date': data.index[-1].strftime('%Y-%m-%d')
             }
             
             # 统计买入卖出信号
@@ -83,7 +94,6 @@ def process_stock(args):
                     if signal == '买入':
                         processed_result['buy_signals'] += 1
                         processed_result['strategies'].append(f"{strategy_name}(买入)")
-                        # 添加详细信号信息
                         processed_result['signal_details'].append({
                             'strategy': strategy_name,
                             'type': '买入',
@@ -93,7 +103,6 @@ def process_stock(args):
                     elif signal == '卖出':
                         processed_result['sell_signals'] += 1
                         processed_result['strategies'].append(f"{strategy_name}(卖出)")
-                        # 添加详细信号信息
                         processed_result['signal_details'].append({
                             'strategy': strategy_name,
                             'type': '卖出',
@@ -138,24 +147,24 @@ class WorkFlow:
     def __init__(self, logger_manager=None):
         # 初始化日志管理器
         self.logger_manager = logger_manager or LoggerManager()
-        self.logger = self.logger_manager.get_logger("work_flow")
+        self.logger = self.logger_manager.get_logger("workflow")
         
-        # 初始化数据获取器和策略分析器
+        # 初始化组件
         self.data_fetcher = DataFetcher(logger_manager=self.logger_manager)
         self.strategy_analyzer = StrategyAnalyzer(logger_manager=self.logger_manager)
         
-        # 用于存储所有分析结果
-        self.analysis_results = []
-        
-        # 设置批处理参数
-        self.BATCH_SIZE = 50
+        # 批处理配置
+        self.BATCH_SIZE = 50  # 每批处理的股票数量
         self.BATCH_DELAY = 1  # 批次间延迟（秒）
-        
-        # 获取股票名称字典
-        self.stock_names = get_stock_name_dict()
         
         # 检查点文件
         self.checkpoint_file = 'data/checkpoint.json'
+        
+        # 分析结果
+        self.analysis_results = []
+        
+        # 获取股票名称字典
+        self.stock_names = get_stock_name_dict()
 
     def prepare(self):
         """准备工作"""
@@ -167,8 +176,13 @@ class WorkFlow:
             for dir_name in ['data', 'logs', 'cache', 'summary']:
                 if not os.path.exists(dir_name):
                     os.makedirs(dir_name)
-                    print(f"创建目录: {dir_name}")
+                    self.logger.info(f"创建目录: {dir_name}")
                     
+            # 检查是否是开盘时间
+            is_market_open = utils.is_market_open()
+            market_status = utils.get_market_status()
+            self.logger.info(f"当前市场状态: {market_status['message']}")
+            
             # 判断运行模式
             is_gui_mode = len(sys.argv) > 1 and sys.argv[1] == '--gui'
             
@@ -178,15 +192,15 @@ class WorkFlow:
                 if os.path.exists(watchlist_file):
                     with open(watchlist_file, 'r', encoding='utf-8') as f:
                         stock_list = json.load(f)
-                    print(f"加载自选股列表: {len(stock_list)}只股票")
+                    self.logger.info(f"加载自选股列表: {len(stock_list)}只股票")
                 else:
-                    print("未找到自选股列表，将分析所有A股")
-                    stock_list = self.data_fetcher.get_stock_list()
+                    self.logger.info("��找到自选股列表，将分析所有A股")
+                    stock_list = utils.get_stock_list()
             else:
                 # 命令行模式下分析全量股票
-                print("命令行模式：分析全量A股")
-                stock_list = self.data_fetcher.get_stock_list()
-                print(f"获取到 {len(stock_list)} 只A股")
+                self.logger.info("命令行模式：分析全量A股")
+                stock_list = utils.get_stock_list()
+                self.logger.info(f"获取到 {len(stock_list)} 只有效A股")
                 
             # 开始分析
             self.analyze_stocks(stock_list)
@@ -196,8 +210,8 @@ class WorkFlow:
             
         except Exception as e:
             error_msg = f"准备工作失败: {str(e)}"
-            print(error_msg)
             self.logger.error(error_msg)
+            self.logger.error(traceback.format_exc())
 
     def analyze_stocks(self, stock_list):
         """分析股票（使用多进程）"""
@@ -206,21 +220,32 @@ class WorkFlow:
             self.logger.info(f"\n开始分析{total}只股票...")
             start_time = time.time()
             
-            # 确定进程数（进一步降低并发数）
-            num_processes = min(cpu_count(), 16)  # 最多使用16个进程
+            # 检查市场状态和缓存情况
+            is_market_open = self.data_fetcher.is_market_open()
+            cache_dir = self.data_fetcher.cache_dir
+            cache_status = "需要更新" if is_market_open else "可以使用缓存"
+            self.logger.info(f"市场状态: {'开盘' if is_market_open else '休市'}, 缓存状态: {cache_status}")
+            
+            # 确定进程数（根据市场状态调整）
+            num_processes = min(cpu_count(), 4 if is_market_open else 8)
             self.logger.info(f"使用{num_processes}个进程进行并行处理")
             
+            # 调整批处理参数
+            batch_size = min(self.BATCH_SIZE, 20 if is_market_open else 50)
+            self.logger.info(f"每批处理 {batch_size} 只股票")
+            
             # 将股票列表分成多个批次
-            batch_size = min(self.BATCH_SIZE, 100)  # 限制每批最大数量为100
             batches = [stock_list[i:i + batch_size] for i in range(0, len(stock_list), batch_size)]
             
             # 统计信息初始化
             processed_count = 0
             success_count = 0
             error_count = 0
+            cache_hit_count = 0
+            cache_miss_count = 0
             signal_counts = {'买入': 0, '卖出': 0}
-            all_results = []  # 存储所有结果
-            failed_stocks = []  # 存储处理失败的股票
+            all_results = []
+            failed_stocks = []
             
             # 使用进程池处理
             for batch_idx, batch in enumerate(batches):
@@ -236,16 +261,20 @@ class WorkFlow:
                         
                         if result:
                             success_count += 1
-                            batch_results.append(result)  # 保存批次结果
+                            batch_results.append(result)
                             # 统计信号
                             if result.get('buy_signals', 0) > 0:
                                 signal_counts['买入'] += 1
                             if result.get('sell_signals', 0) > 0:
                                 signal_counts['卖出'] += 1
+                            # 统计缓存使用情况
+                            if result.get('from_cache', False):
+                                cache_hit_count += 1
+                            else:
+                                cache_miss_count += 1
                         else:
                             error_count += 1
-                            # 记录失败的股票
-                            stock = batch[idx]  # 修复索引问题
+                            stock = batch[idx]
                             failed_stocks.append(stock)
                         
                         # 输出进度
@@ -253,15 +282,19 @@ class WorkFlow:
                         self.logger.info(
                             f"\r进度: {progress:.1f}% ({processed_count}/{total}) "
                             f"成功: {success_count} 失败: {error_count} "
+                            f"缓存命中: {cache_hit_count} 缓存未命中: {cache_miss_count} "
                             f"买入信号: {signal_counts['买入']} 卖出信号: {signal_counts['卖出']}"
                         )
                     
                     # 将批次结果添加到总结果列表
                     all_results.extend(batch_results)
                 
-                # 批次间延迟（增加基础延迟）
+                # 批次间延迟（根据市场状态调整）
                 if batch_idx < len(batches) - 1:
-                    delay = self.BATCH_DELAY + random.uniform(0.5, 1.5)  # 随机0.5-1.5秒额外延迟
+                    if is_market_open:
+                        delay = self.BATCH_DELAY + random.uniform(1, 2)  # 开盘时增加延迟
+                    else:
+                        delay = self.BATCH_DELAY + random.uniform(0.2, 0.5)  # 休市时减少延迟
                     self.logger.info(f"\n等待 {delay:.1f} 秒后处理下一批...")
                     time.sleep(delay)
             
@@ -284,6 +317,7 @@ class WorkFlow:
 - 总股票数: {total}
 - 成功处理: {success_count}
 - 处理失败: {error_count}
+- 缓存命中率: {(cache_hit_count/processed_count*100):.1f}%
 - 买入信号: {signal_counts['买入']}
 - 卖出信号: {signal_counts['卖出']}
 - 平均处理时间: {duration/total:.2f}秒/只
