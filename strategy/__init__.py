@@ -17,6 +17,7 @@ from .low_backtrace_increase import LowBacktraceIncreaseStrategy
 from .keep_increasing import KeepIncreasingStrategy
 from .backtrace_ma250 import BacktraceMA250Strategy
 from .composite_strategy import CompositeStrategy
+from .alpha360 import Alpha360Strategy
 
 __all__ = [
     'BaseStrategy',
@@ -29,5 +30,6 @@ __all__ = [
     'LowBacktraceIncreaseStrategy',
     'KeepIncreasingStrategy',
     'BacktraceMA250Strategy',
-    'CompositeStrategy'
+    'CompositeStrategy',
+    'Alpha360Strategy'
 ]

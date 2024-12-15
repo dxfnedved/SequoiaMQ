@@ -9,17 +9,17 @@ class TurtleStrategy(BaseStrategy):
     def __init__(self, logger_manager=None):
         super().__init__(logger_manager)
         self.name = "TurtleStrategy"
-        # 系统1参数
-        self.sys1_window = 20  # 系统1的N日突破
-        self.sys1_exit_window = 10  # 系统1的退出周期
-        # 系统2参数
-        self.sys2_window = 55  # 系统2的N日突破
-        self.sys2_exit_window = 20  # 系统2的退出周期
+        # 系统1参数（短期系统）
+        self.sys1_window = 10  # 缩短系统1的N日突破周期
+        self.sys1_exit_window = 5  # 缩短系统1的退出周期
+        # 系统2参数（长期系统）
+        self.sys2_window = 30  # 缩短系统2的N日突破周期
+        self.sys2_exit_window = 15  # 缩短系统2的退出周期
         # 通用参数
-        self.atr_window = 20   # ATR周期
-        self.risk_ratio = 0.01  # 风险系数
+        self.atr_window = 14   # 缩短ATR周期
+        self.risk_ratio = 0.02  # 提高风险系数
         self.max_units = 4     # 最大加仓次数
-        self.stop_loss_atr = 2  # 止损的ATR倍数
+        self.stop_loss_atr = 1.5  # 降低止损的ATR倍数
         
     def calculate_atr(self, data):
         """计算ATR"""
@@ -75,17 +75,17 @@ class TurtleStrategy(BaseStrategy):
         # 计算仓位大小
         position_size = self.calculate_position_size(latest_price, latest_atr)
         
-        # 判断突破
+        # 判断突破（放宽突破条件）
         signal = "无"
-        if latest_price > latest_high_n:  # 突破买入
+        if latest_price > latest_high_n * 0.98:  # 允许接近突破位就产生信号
             signal = "买入"
-        elif latest_price < latest_exit_low:  # 突破退出
+        elif latest_price < latest_exit_low * 1.02:  # 允许接近退出位就产生信号
             signal = "卖出"
             
-        # 检查止损条件
+        # 检查止损条件（放宽止损条件）
         if signal == "无" and len(data) > 1:
             prev_price = data['close'].iloc[-2]
-            if self.check_stop_loss(data, prev_price, latest_atr):
+            if self.check_stop_loss(data, prev_price, latest_atr * 1.2):  # 放宽止损条件
                 signal = "止损"
                 
         return {
@@ -110,7 +110,7 @@ class TurtleStrategy(BaseStrategy):
             if not sys1_result or not sys2_result:
                 return None
                 
-            # 综合两个系统的信号
+            # 综合两个系统的信号（放宽条件：任一系统产生信号即可）
             final_signal = "无"
             if sys1_result['signal'] == "买入" or sys2_result['signal'] == "买入":
                 final_signal = "买入"
