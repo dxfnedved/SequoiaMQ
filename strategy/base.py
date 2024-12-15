@@ -31,14 +31,19 @@ class BaseStrategy:
         :param data: DataFrame 股票数据
         :return: bool 数据是否有效
         """
-        if data is None or data.empty:
-            self.logger.warning("数据为空")
-            return False
+        try:
+            if data is None or data.empty:
+                self.logger.warning("数据为空")
+                return False
+                
+            required_columns = ['open', 'high', 'low', 'close', 'volume']
+            missing_columns = [col for col in required_columns if col not in data.columns]
+            if missing_columns:
+                self.logger.warning(f"数据缺少必要列: {missing_columns}")
+                return False
             
-        required_columns = ['开盘', '最高', '最低', '收盘', '成交量']
-        missing_columns = [col for col in required_columns if col not in data.columns]
-        if missing_columns:
-            self.logger.warning(f"数据缺少必要列: {missing_columns}")
-            return False
+            return True
             
-        return True 
+        except Exception as e:
+            self.logger.error(f"数据验证失败: {str(e)}")
+            return False 

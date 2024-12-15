@@ -1,87 +1,112 @@
 # -*- encoding: UTF-8 -*-
-import strategy.high_tight_flag
-import utils
-import strategy.enter as enter
-import strategy.low_atr as low_atr
-import strategy.enter as enter
-import strategy.backtrace_ma250 as backtrace_ma250
-import strategy.parking_apron as parking_apron
-import strategy.breakthrough_platform as breakthrough_platform
-import logging
-import settings
 
-# data = utils.load("000012.h5")
-#
-# rolling_window = 21
-# moving_average = 20
-#
-# average_true_range_list = ATR(
-#     data.high.values[-rolling_window:],
-#     data.low.values[-rolling_window:],
-#     data.close.values[-rolling_window:],
-#     timeperiod=moving_average
-# )
-#
-# average_true_range = average_true_range_list[-1]
-#
-from strategy import turtle_trade, high_tight_flag, climax_limitdown
-from work_flow import process
+import unittest
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+from data_fetcher import DataFetcher
+from strategy.alpha_factors101 import Alpha101Strategy
+from strategy.alpha_factors191 import Alpha191Strategy
+from strategy.RSRS import RSRSStrategy
+from strategy.turtle_trade import TurtleStrategy
+from strategy.low_atr import LowATRStrategy
+from strategy.composite_strategy import CompositeStrategy
+from strategy.backtrace_ma250 import BacktraceMA250Strategy
 
-settings.init()
-# code_name = ('300623', '捷捷微电')
-# code_name = ('600145', '*ST新亿')
-# code_name = ('601700', '风范股份')
-# code_name = ('000725', '京东方Ａ')
-# code_name = ('300437', '清水源')
-# # code_name = ('300663', '科蓝软件')
-# # end = '2017-09-26'
-# end = '2021-10-13'
-#
-# data = utils.read_data(code_name)
-# # print(data)
-# result = strategy.high_tight_flag.check(code_name, data, end_date=end)
-# print("low atr check {0}'s result: {1}".format(code_name, result))
-#
-# rolling_window = 21
-# moving_average = 20
-#
-# average_true_range = ATR(
-#         data.high.values[-rolling_window:],
-#         data.low.values[-rolling_window:],
-#         data.close.values[-rolling_window:],
-#         timeperiod=moving_average
-#     )
-# print(data['最高'].values)
-#
-# print(average_true_range)
-
-# print(atr_list)
-# atr = atr_list[-1]
-# print(atr)
-# print(enter.check_volume(stock, data, end_date="2018-01-02"))
-# import notify
-#
-# results = ['300188', '600271']
-# msg = '\n'.join("*代码：%s" % ''.join(x) for x in results)
-# notice.push(msg)
-# print(results)
-
-# import tushare as ts
-#
-# data = ts.get_stock_basics()
-# print(data)
-
-stocks = [('002728', '特一药业')]
-strategies = {
-        '海龟交易法则': turtle_trade.check_enter,
-        # '放量上涨': enter.check_volume,
-        # '均线多头': keep_increasing.check,
-        # '停机坪': parking_apron.check,
-        # '回踩年线': backtrace_ma250.check,
-        '高而窄的旗形': high_tight_flag.check,
-        '放量跌停': climax_limitdown.check,
-        # '突破平台': breakthrough_platform.check,
-        # '无大幅回撤': low_backtrace_increase.check,
-    }
-
-process(stocks, strategies)
+class TestDataFetcher(unittest.TestCase):
+    def setUp(self):
+        self.fetcher = DataFetcher()
+        
+    def test_get_stock_list(self):
+        stock_list = self.fetcher.get_stock_list()
+        self.assertIsInstance(stock_list, list)
+        if stock_list:
+            self.assertIsInstance(stock_list[0], dict)
+            self.assertIn('code', stock_list[0])
+            self.assertIn('name', stock_list[0])
+            
+    def test_get_stock_data(self):
+        # 测试获取平安银行的数据
+        data = self.fetcher.get_stock_data('000001')
+        self.assertIsInstance(data, pd.DataFrame)
+        if not data.empty:
+            self.assertGreater(len(data), 0)
+            required_columns = ['open', 'high', 'low', 'close', 'volume']
+            for col in required_columns:
+                self.assertIn(col, data.columns)
+                
+class TestStrategies(unittest.TestCase):
+    def setUp(self):
+        # 生成测试数据
+        dates = pd.date_range(start='2023-01-01', end='2023-12-31', freq='D')
+        n_days = len(dates)
+        
+        # 生成价格数据
+        np.random.seed(42)
+        base_price = 100
+        daily_returns = np.random.normal(0.001, 0.02, n_days)
+        prices = base_price * (1 + daily_returns).cumprod()
+        
+        # 添加一些趋势和波动
+        trend = np.linspace(0, 0.5, n_days)
+        prices = prices * (1 + trend)
+        
+        # 生成OHLC数据
+        open_prices = prices * (1 + np.random.normal(0, 0.005, n_days))
+        high_prices = np.maximum(prices * (1 + np.random.normal(0.005, 0.005, n_days)), open_prices)
+        low_prices = np.minimum(prices * (1 + np.random.normal(-0.005, 0.005, n_days)), open_prices)
+        close_prices = prices
+        
+        # 生成成交量和成交额
+        volume = np.random.lognormal(10, 1, n_days)
+        amount = close_prices * volume
+        
+        # 创建DataFrame
+        self.test_data = pd.DataFrame({
+            'open': open_prices,
+            'high': high_prices,
+            'low': low_prices,
+            'close': close_prices,
+            'volume': volume,
+            'amount': amount
+        }, index=dates)
+        
+        # print(data['high'].values)  # Changed from '最高' to 'high'
+        
+    def test_alpha101_strategy(self):
+        strategy = Alpha101Strategy()
+        signals = strategy.get_signals(self.test_data)
+        self.assertIsInstance(signals, list)
+        
+    def test_alpha191_strategy(self):
+        strategy = Alpha191Strategy()
+        signals = strategy.get_signals(self.test_data)
+        self.assertIsInstance(signals, list)
+        
+    def test_rsrs_strategy(self):
+        strategy = RSRSStrategy()
+        signals = strategy.get_signals(self.test_data)
+        self.assertIsInstance(signals, list)
+        
+    def test_turtle_strategy(self):
+        strategy = TurtleStrategy()
+        signals = strategy.get_signals(self.test_data)
+        self.assertIsInstance(signals, list)
+        
+    def test_low_atr_strategy(self):
+        strategy = LowATRStrategy()
+        signals = strategy.get_signals(self.test_data)
+        self.assertIsInstance(signals, list)
+        
+    def test_composite_strategy(self):
+        strategy = CompositeStrategy()
+        signals = strategy.get_signals(self.test_data)
+        self.assertIsInstance(signals, list)
+        
+    def test_backtrace_ma250_strategy(self):
+        strategy = BacktraceMA250Strategy()
+        signals = strategy.get_signals(self.test_data)
+        self.assertIsInstance(signals, list)
+        
+if __name__ == '__main__':
+    unittest.main()

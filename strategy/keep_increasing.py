@@ -19,7 +19,7 @@ class KeepIncreasingStrategy(BaseStrategy):
     def calculate_trend(self, data):
         """计算趋势"""
         try:
-            close = data['收盘']
+            close = data['close']
             
             # 计算每日涨跌
             daily_change = close.pct_change()
@@ -90,7 +90,7 @@ class KeepIncreasingStrategy(BaseStrategy):
                     'date': data.index[-1],
                     'type': result['signal'],
                     'strategy': self.name,
-                    'price': data['收盘'].iloc[-1],
+                    'price': data['close'].iloc[-1],
                     'increase_days': result['increase_days'],
                     'decrease_days': result['decrease_days'],
                     'total_increase': result['total_increase'],

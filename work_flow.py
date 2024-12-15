@@ -116,7 +116,7 @@ class WorkFlow:
         
         # 设置批处理参数
         self.BATCH_SIZE = 50
-        self.BATCH_DELAY = 5  # 批次间延迟（秒）
+        self.BATCH_DELAY = 1  # 批次间延迟（秒）
         
         # 获取股票名称字典
         self.stock_names = get_stock_name_dict()
@@ -174,7 +174,7 @@ class WorkFlow:
             start_time = time.time()
             
             # 确定进程数（使用CPU核心数的2倍，因为涉及I/O操作）
-            num_processes = min(cpu_count() * 2, 8)  # 最多使用8个进程，避免过多并发请求
+            num_processes = min(cpu_count() * 2, 16)  # 最多使用16个进程，避免过多并发请求
             print(f"使用{num_processes}个进程进行并行处理")
             
             # 将股票列表分成多个批次

@@ -45,12 +45,12 @@ class TestStrategies(unittest.TestCase):
         amount = volume * close_prices
         
         self.test_data = pd.DataFrame({
-            '开盘': open_prices,
-            '最高': high_prices,
-            '最低': low_prices,
-            '收盘': close_prices,
-            '成交量': volume,
-            '成交额': amount
+            'open': open_prices,
+            'high': high_prices,
+            'low': low_prices,
+            'close': close_prices,
+            'volume': volume,
+            'amount': amount
         }, index=dates)
         
     def test_base_strategy(self):

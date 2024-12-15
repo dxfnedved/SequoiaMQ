@@ -18,30 +18,39 @@ def get_stock_list():
         
         # 过滤条件
         def is_valid_stock(code, name):
-            # 排除ST股票
-            if 'ST' in name.upper():
+            try:
+                # 排除ST股票
+                if 'ST' in name.upper():
+                    return False
+                # 排除退市股票
+                if '退' in name:
+                    return False
+                # 排除科创板股票
+                if code.startswith('688'):
+                    return False
+                # 排除北交所股票
+                if code.startswith('8'):
+                    return False
+                # 只保留沪深主板、中小板、创业板
+                return code.startswith(('000', '001', '002', '003', '300', '600', '601', '603', '605'))
+            except Exception as e:
+                logger.error(f"处理股票 {code} 时出错: {str(e)}")
                 return False
-            # 排除退市股票
-            if '退' in name:
-                return False
-            # 排除科创板股票
-            if code.startswith('688'):
-                return False
-            # 排除北交所股票
-            if code.startswith('8'):
-                return False
-            # 只保留沪深主板、中小板、创业板
-            return code.startswith(('000', '001', '002', '003', '300', '600', '601', '603', '605'))
         
-        # 应用过滤组件
-        valid_stocks = stock_info[
-            stock_info.apply(lambda x: is_valid_stock(x['code'], x['name']), axis=1)
-        ]
+        # 应用过滤条件
+        valid_stocks = []
+        for _, row in stock_info.iterrows():
+            try:
+                code = str(row['code'])
+                name = str(row['name'])
+                if is_valid_stock(code, name):
+                    valid_stocks.append((code, name))
+            except Exception as e:
+                logger.error(f"处理股票数据时出错: {str(e)}")
+                continue
         
-        # 转换为(code, name)元组列表，确保code是字符串类型
-        stock_list = [(str(code), name) for code, name in zip(valid_stocks['code'], valid_stocks['name'])]
-        logger.info(f"获取到 {len(stock_list)} 只有效股票")
-        return stock_list
+        logger.info(f"获取到 {len(valid_stocks)} 只有效股票")
+        return valid_stocks
         
     except Exception as e:
         logger.error(f"获取股票列表失败: {str(e)}")

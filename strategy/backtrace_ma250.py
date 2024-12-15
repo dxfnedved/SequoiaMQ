@@ -10,30 +10,26 @@ class BacktraceMA250Strategy(BaseStrategy):
     def __init__(self, logger_manager=None):
         super().__init__(logger_manager)
         self.name = "BacktraceMA250Strategy"
-        self.ma_window = 250  # 年线周期
-        self.backtrace_threshold = 0.05  # 回踩阈值
+        self.ma_window = 250  # 均线周期
+        self.backtrace_threshold = 0.02  # 回踩阈值
         self.volume_ratio = 1.5  # 成交量放大倍数
-        self.rsi_window = 14  # RSI周期
-        self.rsi_threshold = 30  # RSI阈值
+        self.rsi_threshold = 50  # RSI阈值
         
     def calculate_indicators(self, data):
         """计算技术指标"""
         try:
-            close = data['收盘']
-            volume = data['成交量']
-            
             # 计算MA250
-            ma250 = close.rolling(window=self.ma_window).mean()
+            ma250 = data['close'].rolling(window=self.ma_window).mean()
             
-            # 计算价格与均线的偏离度
-            deviation = (close - ma250) / ma250
+            # 计算偏离度
+            deviation = (data['close'] - ma250) / ma250
             
             # 计算成交量比率
-            volume_ma = volume.rolling(window=20).mean()
-            volume_ratio = volume / volume_ma
+            volume_ma = data['volume'].rolling(window=20).mean()
+            volume_ratio = data['volume'] / volume_ma
             
             # 计算RSI
-            rsi = pd.Series(ta.RSI(close.values, timeperiod=self.rsi_window))
+            rsi = ta.RSI(data['close'].values, timeperiod=14)
             
             return ma250, deviation, volume_ratio, rsi
             
@@ -54,7 +50,7 @@ class BacktraceMA250Strategy(BaseStrategy):
                 return None
                 
             # 获取最新数据
-            latest_close = data['收盘'].iloc[-1]
+            latest_close = data['close'].iloc[-1]
             latest_ma250 = ma250.iloc[-1]
             latest_deviation = deviation.iloc[-1]
             latest_volume_ratio = volume_ratio.iloc[-1]
@@ -97,7 +93,7 @@ class BacktraceMA250Strategy(BaseStrategy):
                     'date': data.index[-1],
                     'type': result['signal'],
                     'strategy': self.name,
-                    'price': data['收盘'].iloc[-1],
+                    'price': data['close'].iloc[-1],
                     'ma250': result['ma250'],
                     'deviation': result['deviation'],
                     'volume_ratio': result['volume_ratio'],

@@ -78,25 +78,41 @@ class DataFetcher:
                 # 使用akshare获取数据
                 df = ak.stock_zh_a_hist(symbol=code, start_date=start_date_str, end_date=end_date_str)
                 
-                # 重命名列
+                # 重命名列（使用英文列名）
                 df = df.rename(columns={
                     '日期': 'date',
-                    '开盘': '开盘',
-                    '收盘': '收盘',
-                    '最高': '最高',
-                    '最低': '最低',
-                    '成交量': '成交量',
-                    '成交额': '成交额',
-                    '振幅': '振幅',
-                    '涨跌幅': 'p_change',
-                    '涨跌额': '涨跌额',
-                    '换手率': '换手率'
+                    '开盘': 'open',
+                    '收盘': 'close',
+                    '最高': 'high',
+                    '最低': 'low',
+                    '成交量': 'volume',
+                    '成交额': 'amount',
+                    '振幅': 'amplitude',
+                    '涨跌幅': 'pct_change',
+                    '涨跌额': 'change',
+                    '换手率': 'turnover'
                 })
                 
                 # 设置日期索引
                 df['date'] = pd.to_datetime(df['date'])
                 df.set_index('date', inplace=True)
                 
+                # 数据验证
+                required_columns = ['open', 'close', 'high', 'low', 'volume']
+                if not all(col in df.columns for col in required_columns):
+                    self.logger.error(f"股票 {code} 数据缺少必要列")
+                    return None
+                    
+                # 检查数据是否为空
+                if df.empty:
+                    self.logger.error(f"股票 {code} 数据为空")
+                    return None
+                    
+                # 检查数据是否包含无效值
+                if df[required_columns].isnull().any().any():
+                    self.logger.error(f"股票 {code} 数据包含无效值")
+                    return None
+                    
                 print(f"成功获取股票 {code} 的历史数据，共 {len(df)} 条记录")
                 return df
                 
