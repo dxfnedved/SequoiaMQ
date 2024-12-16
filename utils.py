@@ -15,6 +15,60 @@ def is_weekday():
     """是否是工作日"""
     return datetime.datetime.today().weekday() < 5
 
+def is_stock_active(code, name=None):
+    """检查股票是否处于正常交易状态"""
+    try:
+        # 获取股票的基本信息
+        stock_info = ak.stock_individual_info_em(symbol=code)
+        if stock_info is None or stock_info.empty:
+            logger.warning(f"无法获取股票 {code} 的基本信息")
+            return False
+            
+        # 检查数据格式
+        if '股票状态' not in stock_info.columns:
+            # 尝试获取实时行情作为备选验证方法
+            try:
+                realtime_info = ak.stock_zh_a_spot_em()
+                if realtime_info is not None and not realtime_info.empty:
+                    stock_data = realtime_info[realtime_info['代码'] == code]
+                    if not stock_data.empty:
+                        # 如果能获取到实时行情，说明股票可交易
+                        return True
+            except Exception as e:
+                logger.warning(f"获取股票 {code} 实时行情失败: {str(e)}")
+            
+            # 如果两种方法都失败，使用基本过滤规则
+            if name:
+                # 检查基本规则
+                if 'ST' in name.upper() or '退' in name:
+                    return False
+                # 检查股票代码规则
+                if code.startswith(('000', '001', '002', '003', '300', '600', '601', '603', '605')):
+                    return True
+            return False
+            
+        # 如果有状态信息，检查是否为正常交易
+        status = stock_info.iloc[0]['股票状态']
+        if '正常交易' not in str(status):
+            logger.info(f"股票 {code} 状态为: {status}")
+            return False
+            
+        # 额外的检查
+        if name and ('退' in name or 'ST' in name.upper()):
+            return False
+            
+        return True
+        
+    except Exception as e:
+        logger.warning(f"检查股票 {code} 状态时出错: {str(e)}")
+        # 发生错误时，尝试使用基本规则判断
+        if name:
+            if 'ST' in name.upper() or '退' in name:
+                return False
+            if code.startswith(('000', '001', '002', '003', '300', '600', '601', '603', '605')):
+                return True
+        return False
+
 def get_stock_list():
     """获取有效的A股列表（剔除ST、退市、科创板和北交所股票）"""
     max_retries = 3
@@ -40,20 +94,28 @@ def get_stock_list():
             
             # 过滤条件
             def is_valid_stock(code, name):
+                # 基本过滤条件
+                if not code.startswith(('000', '001', '002', '003', '300', '600', '601', '603', '605')):
+                    return False
+                    
                 # 排除ST股票
                 if 'ST' in name.upper():
                     return False
+                    
                 # 排除退市股票
                 if '退' in name:
                     return False
+                    
                 # 排除科创板股票
                 if code.startswith('688'):
                     return False
+                    
                 # 排除北交所股票
                 if code.startswith('8'):
                     return False
-                # 只保留沪深主板、中小板、创业板
-                return code.startswith(('000', '001', '002', '003', '300', '600', '601', '603', '605'))
+                    
+                # 检查股票是否处于正常交易状态
+                return is_stock_active(code, name)
                 
             # 应用过滤条件
             valid_stocks = stock_info[
@@ -88,7 +150,7 @@ A股列表获取成功:
     return []
 
 def format_code(code):
-    """格式化股票代码（添加市场标识）"""
+    """式化股票代码（添加市场标识）"""
     if code.startswith(('000', '001', '002', '003', '300')):
         return f"0.{code}"  # 深市
     elif code.startswith(('600', '601', '603', '605')):
@@ -268,5 +330,5 @@ def save_analysis_result(result, code):
         return filename
         
     except Exception as e:
-        print(f"保���分析结果时出错: {str(e)}")
+        print(f"保存分析结果时出错: {str(e)}")
         return None

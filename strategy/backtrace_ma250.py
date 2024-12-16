@@ -18,23 +18,31 @@ class BacktraceMA250Strategy(BaseStrategy):
     def calculate_indicators(self, data):
         """计算技术指标"""
         try:
+            # 确保数据是DataFrame格式
+            if not isinstance(data, pd.DataFrame):
+                self.logger.error("Input data must be a pandas DataFrame")
+                return None, None, None, None
+            
             # 计算MA250
-            ma250 = data['close'].rolling(window=self.ma_window).mean()
+            close_series = pd.Series(data['close'], index=data.index)
+            ma250 = close_series.rolling(window=self.ma_window).mean()
             
             # 计算偏离度
-            deviation = (data['close'] - ma250) / ma250
+            deviation = (close_series - ma250) / ma250
             
             # 计算成交量比率
-            volume_ma = data['volume'].rolling(window=20).mean()
-            volume_ratio = data['volume'] / volume_ma
+            volume_series = pd.Series(data['volume'], index=data.index)
+            volume_ma = volume_series.rolling(window=20).mean()
+            volume_ratio = volume_series / volume_ma
             
             # 计算RSI
-            rsi = ta.RSI(data['close'].values, timeperiod=14)
+            rsi_values = ta.RSI(close_series.values, timeperiod=14)
+            rsi = pd.Series(rsi_values, index=data.index)
             
             return ma250, deviation, volume_ratio, rsi
             
         except Exception as e:
-            print(f"计算技术指标失败: {str(e)}")
+            self.logger.error(f"计算技术指标失败: {str(e)}")
             return None, None, None, None
             
     def analyze(self, data):
@@ -76,7 +84,7 @@ class BacktraceMA250Strategy(BaseStrategy):
             }
             
         except Exception as e:
-            print(f"回踩年线策略分析失败: {str(e)}")
+            self.logger.error(f"回踩年线策略分析失败: {str(e)}")
             return None
             
     def get_signals(self, data):

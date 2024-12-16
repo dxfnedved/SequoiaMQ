@@ -1,0 +1,3 @@
+@echo off
+echo Starting Continuous Limit Up Analysis...
+streamlit run continuous_limit_up.py 

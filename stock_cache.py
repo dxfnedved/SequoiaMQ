@@ -5,6 +5,7 @@ from datetime import datetime
 import akshare as ak
 from pypinyin import lazy_pinyin, Style
 from logger_manager import LoggerManager
+from utils import is_stock_active
 
 class StockCache:
     """股票信息缓存管理器"""
@@ -35,10 +36,23 @@ class StockCache:
                 with open(cache_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     df = pd.DataFrame(data)
-                    self.logger.info(f"从缓存加载了 {len(df)} 只股票信息")
-                    return df
+                    
+                    # 验证缓存中的股票是否仍然有效
+                    valid_stocks = []
+                    for _, row in df.iterrows():
+                        if is_stock_active(row['code'], row['name']):
+                            valid_stocks.append(row)
+                        else:
+                            self.logger.warning(f"股票 {row['code']} - {row['name']} 已不再交易，从缓存中移除")
+                    
+                    df = pd.DataFrame(valid_stocks)
+                    if not df.empty:
+                        self.logger.info(f"从缓存加载了 {len(df)} 只有效股票信息")
+                        return df
+                    else:
+                        self.logger.warning("缓存中没有有效股票，重新获取")
             
-            # 如果没有缓存，从网络获取
+            # 如果没有缓存或缓存无效，从网络获取
             df = ak.stock_info_a_code_name()
             
             # 添加拼音列
@@ -62,14 +76,17 @@ class StockCache:
                 if code.startswith('8'):
                     return False
                 # 只保留沪深主板、中小板、创业板
-                return code.startswith(('000', '001', '002', '003', '300', '600', '601', '603', '605'))
+                if not code.startswith(('000', '001', '002', '003', '300', '600', '601', '603', '605')):
+                    return False
+                # 检查是否正常交易
+                return is_stock_active(code, name)
             
             # 应用过滤
             df = df[df.apply(lambda x: is_valid_stock(x['code'], x['name']), axis=1)]
             
             # 保存到缓存
             df.to_json(cache_path, orient='records', force_ascii=False)
-            self.logger.info(f"成功获取并缓存 {len(df)} 只股票信息")
+            self.logger.info(f"成功获取并缓存 {len(df)} 只有效股票信息")
             
             return df
             
