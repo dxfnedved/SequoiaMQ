@@ -65,16 +65,15 @@ class LoggerManager:
         if record.levelno >= logging.WARNING:
             return True
             
-        # 只显示特定的INFO消息
+        # 显示大多数INFO消息
         if record.levelno == logging.INFO:
-            important_messages = [
-                "开始分析",
-                "分析进度",
-                "分析完成",
-                "发现买入信号",
-                "发现卖出信号"
+            # 排除一些不重要的INFO消息
+            exclude_messages = [
+                "debug",
+                "trace",
+                "详细信息"
             ]
-            return any(msg in record.msg for msg in important_messages)
+            return not any(msg in record.msg.lower() for msg in exclude_messages)
             
         return False
         
@@ -84,16 +83,9 @@ class LoggerManager:
         if record.levelno >= logging.WARNING:
             return True
             
-        # 记录重要的INFO消息
+        # 记录大多数INFO消息
         if record.levelno == logging.INFO:
-            important_messages = [
-                "开始分析",
-                "分析完成",
-                "发现买入信号",
-                "发现卖出信号",
-                "保存结果"
-            ]
-            return any(msg in record.msg for msg in important_messages)
+            return True
             
         return False
         

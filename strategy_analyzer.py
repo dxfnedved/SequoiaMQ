@@ -7,7 +7,6 @@ from strategy.low_atr import LowATRStrategy
 from strategy.alpha360 import Alpha360Strategy
 from logger_manager import LoggerManager
 from strategy import BaseStrategy
-from strategy.turtle_trade import TurtleStrategy
 from strategy.alpha_factors191 import Alpha191Strategy
 from strategy.enter import EnterStrategy
 from strategy.keep_increasing import KeepIncreasingStrategy

@@ -76,12 +76,14 @@ def get_stock_list():
     
     for attempt in range(max_retries):
         try:
+            print(f"\n正在获取A股列表 (尝试 {attempt + 1}/{max_retries})...")
             logger.info(f"开始获取A股列表 (尝试 {attempt + 1}/{max_retries})...")
             
             # 获取所有A股列表
             stock_info = ak.stock_zh_a_spot_em()
             
             if stock_info is None or stock_info.empty:
+                print("获取股票列表失败：返回数据为空")
                 logger.error("获取股票列表失败：返回数据为空")
                 if attempt < max_retries - 1:
                     time.sleep(retry_delay * (2 ** attempt))  # 指数退避
@@ -114,7 +116,7 @@ def get_stock_list():
                 if code.startswith('8'):
                     return False
                     
-                # 检查股票是否处于正常交易状态
+                # 检查股票是否处于正���交易状态
                 return is_stock_active(code, name)
                 
             # 应用过滤条件
@@ -126,7 +128,7 @@ def get_stock_list():
             stock_list = valid_stocks.to_dict('records')
             
             # 记录统计信息
-            logger.info(f"""
+            stats = f"""
 A股列表获取成功:
 - 原始数量: {len(stock_info)}
 - 有效数量: {len(stock_list)}
@@ -135,11 +137,14 @@ A股列表获取成功:
   主板: {len(valid_stocks[valid_stocks['code'].str.match('^(000|001|600|601)', na=False)])}
   中小板: {len(valid_stocks[valid_stocks['code'].str.match('^(002|003)', na=False)])}
   创业板: {len(valid_stocks[valid_stocks['code'].str.match('^300', na=False)])}
-            """)
+            """
+            print(stats)
+            logger.info(stats)
             
             return stock_list
             
         except Exception as e:
+            print(f"获取股票列表失败 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
             logger.error(f"获取股票列表失败 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
             logger.error(traceback.format_exc())
             if attempt < max_retries - 1:
@@ -332,3 +337,30 @@ def save_analysis_result(result, code):
     except Exception as e:
         print(f"保存分析结果时出错: {str(e)}")
         return None
+
+def get_stock_name_dict():
+    """获取股票代码到名称的映射字典"""
+    try:
+        logger.info("开始获取股票名称字典...")
+        
+        # 获取所有A股列表
+        stock_info = ak.stock_zh_a_spot_em()
+        
+        if stock_info is None or stock_info.empty:
+            logger.error("获取股票名称字典失败：返回数据为空")
+            return {}
+            
+        # 只保留股票代码和名称
+        stock_info = stock_info[['代码', '名称']]
+        
+        # 转换为字典格式
+        stock_dict = dict(zip(stock_info['代码'], stock_info['名称']))
+        
+        logger.info(f"成功获取 {len(stock_dict)} 只股票的名称信息")
+        
+        return stock_dict
+        
+    except Exception as e:
+        logger.error(f"获取股票名称字典失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        return {}

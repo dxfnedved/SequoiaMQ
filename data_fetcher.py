@@ -10,6 +10,7 @@ import traceback
 from pathlib import Path
 from logger_manager import LoggerManager
 from utils import is_stock_active
+import random
 
 class DataFetcher:
     def __init__(self, logger_manager=None):
@@ -51,58 +52,84 @@ class DataFetcher:
         return True
     
     def _fetch_stock_data(self, code, retries=0):
-        """Fetch stock data with retry logic"""
+        """获取股票数据"""
         try:
             if retries > 0:
                 time.sleep(self.retry_delay * (2 ** (retries - 1)))
             
-            self.logger.info(f"Fetching daily data for stock {code}")
+            self.logger.info(f"获取股票 {code} 的历史数据")
+            
+            # 设置时间范围为一年
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=365)
+            
+            # 格式化日期
+            start_date_str = start_date.strftime('%Y%m%d')
+            end_date_str = end_date.strftime('%Y%m%d')
+            
+            # 添加随机延迟，避免请求过于频繁
+            delay = random.uniform(0.1, 0.5)
+            time.sleep(delay)
             
             # 尝试不同的数据获取方式
             df = None
+            error_msgs = []
+            
+            # 方法1: 使用主接口
             try:
-                # 首先尝试使用 stock_zh_a_hist
-                df = ak.stock_zh_a_hist(symbol=code, period="daily", start_date="20240101", adjust="qfq")
-            except Exception as e1:
-                self.logger.warning(f"First attempt failed for {code}: {str(e1)}")
-                try:
-                    # 如果失败，尝试使用 stock_zh_a_daily
-                    df = ak.stock_zh_a_daily(symbol=code, adjust="qfq")
-                except Exception as e2:
-                    self.logger.warning(f"Second attempt failed for {code}: {str(e2)}")
-                    try:
-                        # 最后尝试使用 stock_zh_a_hist_min_em
-                        df_min = ak.stock_zh_a_hist_min_em(symbol=code, period='60', adjust='qfq')
-                        if df_min is not None and not df_min.empty:
-                            # 将分钟数据转换为日线数据
-                            df = df_min.resample('D').agg({
-                                '开盘': 'first',
-                                '收盘': 'last',
-                                '最高': 'max',
-                                '最低': 'min',
-                                '成交量': 'sum',
-                                '成交额': 'sum'
-                            }).dropna()
-                    except Exception as e3:
-                        self.logger.warning(f"Third attempt failed for {code}: {str(e3)}")
-            
-            # 验证返回的数据
-            if df is None or not isinstance(df, pd.DataFrame) or df.empty:
-                self.logger.error(f"Empty data returned for stock {code}")
-                if retries < self.max_retries:
-                    self.logger.warning(f"Retry {retries + 1} for {code}")
-                    return self._fetch_stock_data(code, retries + 1)
-                return None
-            
-            # 确保df是DataFrame并转换
-            if not isinstance(df, pd.DataFrame):
-                try:
-                    df = pd.DataFrame(df)
-                except Exception as e:
-                    self.logger.error(f"Failed to convert data to DataFrame for {code}: {str(e)}")
-                    return None
+                self.logger.info("尝试使用主接口获取数据...")
+                df = ak.stock_zh_a_hist(symbol=code, period="daily", 
+                                      start_date=start_date_str,
+                                      end_date=end_date_str, adjust="qfq")
                 
-            # 统一列名
+                if df is not None and not df.empty:
+                    df = self._standardize_columns(df)
+                    if self._validate_data(df, code):
+                        self.logger.info("成功从主接口获取数据")
+                        return df
+                        
+            except Exception as e:
+                error_msgs.append(f"主接口: {str(e)}")
+                
+            # 方法2: 使用分钟数据接口
+            try:
+                if df is None or df.empty:
+                    self.logger.info("尝试使用分钟数据接口...")
+                    df_min = ak.stock_zh_a_hist_min_em(symbol=code, period='60',
+                                                      start_date=start_date_str,
+                                                      end_date=end_date_str)
+                    
+                    if df_min is not None and not df_min.empty:
+                        df = self._convert_min_to_daily(df_min)
+                        if df is not None and self._validate_data(df, code):
+                            self.logger.info("成功从分钟数据接口获取数据")
+                            return df
+                            
+            except Exception as e:
+                error_msgs.append(f"分钟数据接口: {str(e)}")
+                
+            # 所有方法都失败
+            if error_msgs:
+                error_msg = "; ".join(error_msgs)
+                self.logger.error(f"所有数据源都获取失败: {error_msg}")
+                
+            if retries < self.max_retries - 1:
+                self.logger.info(f"重试获取股票 {code} 数据...")
+                return self._fetch_stock_data(code, retries + 1)
+                
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"获取股票 {code} 数据失败: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            if retries < self.max_retries - 1:
+                return self._fetch_stock_data(code, retries + 1)
+            return None
+            
+    def _standardize_columns(self, df):
+        """标准化数据列名"""
+        try:
+            # 统一列名映射
             column_map = {
                 '日期': 'date',
                 '开盘': 'open',
@@ -112,60 +139,52 @@ class DataFetcher:
                 '成交量': 'volume',
                 '成交额': 'amount',
                 '振幅': 'amplitude',
-                '涨跌幅': 'change_pct',
-                '涨跌额': 'change_amount',
-                '换手率': 'turnover_rate'
+                '涨跌幅': 'pct_change',
+                '涨跌额': 'change',
+                '换手率': 'turnover'
             }
             
-            # 只重命名存在的列
+            # 重命名存在的列
             rename_dict = {k: v for k, v in column_map.items() if k in df.columns}
             if rename_dict:
-                df.rename(columns=rename_dict, inplace=True)
-            else:
-                self.logger.error(f"No matching columns found for {code}")
-                return None
+                df = df.rename(columns=rename_dict)
+                
+            # 设置日期索引
+            if 'date' in df.columns:
+                df['date'] = pd.to_datetime(df['date'])
+                df.set_index('date', inplace=True)
+                
+            # 按日期排序
+            df.sort_index(inplace=True)
             
-            # 处理日期列
-            date_col = 'date' if 'date' in df.columns else '日期'
-            if date_col in df.columns:
-                df[date_col] = pd.to_datetime(df[date_col])
-                df.set_index(date_col, inplace=True)
-            else:
-                self.logger.error(f"No date column found for {code}")
-                return None
-            
-            # 转换数值列
-            numeric_cols = ['open', 'high', 'low', 'close', 'volume', 'amount']
-            for col in numeric_cols:
-                if col in df.columns:
-                    try:
-                        df[col] = pd.to_numeric(df[col], errors='coerce')
-                    except Exception as e:
-                        self.logger.error(f"Failed to convert {col} to numeric for {code}: {str(e)}")
-                        return None
-                    
-            # 删除无效数据行
-            df = df.dropna(subset=['open', 'high', 'low', 'close', 'volume'])
-            
-            # 验证数据有效性
-            if df.empty:
-                self.logger.error(f"No valid data after cleaning for {code}")
-                return None
-            
-            if not self._validate_data(df, code):
-                raise ValueError(f"Data validation failed for {code}")
-            
-            self.logger.info(f"Successfully fetched data for {code}")
             return df
             
         except Exception as e:
-            if retries < self.max_retries:
-                self.logger.warning(f"Retry {retries + 1} for {code}: {str(e)}")
-                return self._fetch_stock_data(code, retries + 1)
-            else:
-                self.logger.error(f"Failed to fetch data for {code} after {self.max_retries} retries: {str(e)}")
-                self.logger.error(traceback.format_exc())
-                return None
+            self.logger.error(f"标准化数据列失败: {str(e)}")
+            return None
+            
+    def _convert_min_to_daily(self, df_min):
+        """将分钟数据转换为日线数据"""
+        try:
+            # 确保时间列是datetime类型
+            df_min['时间'] = pd.to_datetime(df_min['时间'])
+            
+            # 转换为日线数据
+            df = df_min.resample('D', on='时间').agg({
+                '开盘': 'first',
+                '收盘': 'last',
+                '最高': 'max',
+                '最低': 'min',
+                '成交量': 'sum',
+                '成交额': 'sum'
+            }).dropna()
+            
+            # 标准化列名
+            return self._standardize_columns(df)
+            
+        except Exception as e:
+            self.logger.error(f"转换分钟数据失败: {str(e)}")
+            return None
     
     def _fetch_minute_data(self, code, retries=0):
         """Fetch minute-level data with retry logic"""
