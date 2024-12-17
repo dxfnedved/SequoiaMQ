@@ -1,13 +1,17 @@
+"""Main window implementation for SequoiaMQ GUI."""
+
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
     QPushButton, QMessageBox
 )
 from PySide6.QtCore import Qt
-from stock_search import StockSearchWidget
-from stock_chart import StockChartWidget
-from watchlist_widget import WatchlistWidget
-from strategy_selector_widget import StrategySelector
-from analysis_dialog import show_analysis_dialog
+
+from .widgets.stock_search import StockSearchWidget
+from .widgets.stock_chart import StockChartWidget
+from .widgets.watchlist import WatchlistWidget
+from .widgets.strategy_selector import StrategySelector
+from .widgets.strategy_analyzer import StrategyAnalyzer
+from .dialogs.analysis_dialog import show_analysis_dialog
 from work_flow import WorkFlow
 from logger_manager import LoggerManager
 
@@ -21,6 +25,7 @@ class MainWindow(QMainWindow):
         
         # 初始化工作流
         self.work_flow = WorkFlow(logger_manager=self.logger_manager)
+        self.strategy_analyzer = StrategyAnalyzer(logger_manager=self.logger_manager)
         
         self.init_ui()
         
@@ -98,7 +103,7 @@ class MainWindow(QMainWindow):
         try:
             for code, name in stocks:
                 # 获取分析结果
-                results = self.work_flow.analyze_stock(code)
+                results = self.strategy_analyzer.analyze_stock(code)
                 
                 # 显示分析结果对话框
                 show_analysis_dialog(
@@ -111,14 +116,4 @@ class MainWindow(QMainWindow):
                 
         except Exception as e:
             self.logger.error(f"分析股票失败: {str(e)}")
-            QMessageBox.warning(self, "错误", f"分析股票失败: {str(e)}")
-            
-    def closeEvent(self, event):
-        """关闭事件"""
-        try:
-            # 保存策略设置
-            self.strategy_selector.save_settings()
-            event.accept()
-        except Exception as e:
-            self.logger.error(f"关闭窗口失败: {str(e)}")
-            event.accept()
+            QMessageBox.warning(self, "错误", f"分析股票失败: {str(e)}") 

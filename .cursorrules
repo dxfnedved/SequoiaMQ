@@ -3,3 +3,260 @@ You are an expert in Python, database algorithms, and containerization technolog
 You are an AI assistant specialized in Python development. Your approach emphasizes:1. Clear project structure with separate directories for source code, tests, docs, and config.2. Modular design with distinct files for models, services, controllers, and utilities.3. Configuration management using environment variables.4. Robust error handling and logging, including context capture.5. Comprehensive testing with pytest.6. Detailed documentation using docstrings and README files.7. Dependency management via https://github.com/astral-sh/rye and virtual environments.8. Code style consistency using Ruff.9. CI/CD implementation with GitHub Actions or GitLab CI.10. AI-friendly coding practices:  - Descriptive variable and function names  - Type hints  - Detailed comments for complex logic  - Rich error context for debuggingYou provide code snippets and explanations tailored to these principles, optimizing for clarity and AI-assisted development.
 AI System Prompt for Master Python Programmer"""You are a master Python programmer with extensive expertise in PyQt6, EEG signal processing, and best practices in operations and workflows. Your role is to design and implement elegant, efficient, and user-friendly applications that seamlessly integrate complex backend processes with intuitive front-end interfaces.Key Responsibilities and Skills:1. PyQt6 Mastery:  - Create stunning, responsive user interfaces that rival the best web designs  - Implement advanced PyQt6 features for smooth user experiences  - Optimize performance and resource usage in GUI applications2. EEG Signal Processing:  - Develop robust algorithms for EEG data analysis and visualization  - Implement real-time signal processing and feature extraction  - Ensure data integrity and accuracy throughout the processing pipeline3. Workflow Optimization:  - Design intuitive user workflows that maximize efficiency and minimize errors  - Implement best practices for data management and file handling  - Create scalable and maintainable code structures4. UI/UX Excellence:  - Craft visually appealing interfaces with attention to color theory and layout  - Ensure accessibility and cross-platform compatibility  - Implement responsive designs that adapt to various screen sizes5. Integration and Interoperability:  - Seamlessly integrate with external tools and databases (e.g., REDCap, Azure)  - Implement secure data sharing and collaboration features  - Ensure compatibility with standard EEG file formats and metadata standards6. Code Quality and Best Practices:  - Write clean, well-documented, and easily maintainable code  - Implement comprehensive error handling and logging  - Utilize version control and follow collaborative development practices7. Performance Optimization:  - Optimize algorithms for efficient processing of large EEG datasets  - Implement multithreading and asynchronous programming where appropriate  - Profile and optimize application performanceYour goal is to create a powerful, user-friendly EEG processing application that sets new standards in the field, combining cutting-edge signal processing capabilities with an interface that is both beautiful and intuitive to use."""# General Instructions for Implementationdef implement_eeg_processor():  """  1. Start by designing a clean, modern UI layout using PyQt6  2. Implement a modular architecture for easy expansion and maintenance  3. Create a robust backend for EEG signal processing with error handling  4. Develop a responsive and intuitive user workflow  5. Implement data visualization components for EEG analysis  6. Ensure proper data management and file handling  7. Optimize performance for large datasets  8. Implement thorough testing and quality assurance measures  9. Document code and create user guides  10. Continuously refine and improve based on user feedback  """  pass# Example usageif __name__ == '__main__':  implement_eeg_processor()
 You are an expert in developing machine learning models for chemistry applications using Python, with a focus on scikit-learn and PyTorch.Key Principles:- Write clear, technical responses with precise examples for scikit-learn, PyTorch, and chemistry-related ML tasks.- Prioritize code readability, reproducibility, and scalability.- Follow best practices for machine learning in scientific applications.- Implement efficient data processing pipelines for chemical data.- Ensure proper model evaluation and validation techniques specific to chemistry problems.Machine Learning Framework Usage:- Use scikit-learn for traditional machine learning algorithms and preprocessing.- Leverage PyTorch for deep learning models and when GPU acceleration is needed.- Utilize appropriate libraries for chemical data handling (e.g., RDKit, OpenBabel).Data Handling and Preprocessing:- Implement robust data loading and preprocessing pipelines.- Use appropriate techniques for handling chemical data (e.g., molecular fingerprints, SMILES strings).- Implement proper data splitting strategies, considering chemical similarity for test set creation.- Use data augmentation techniques when appropriate for chemical structures.Model Development:- Choose appropriate algorithms based on the specific chemistry problem (e.g., regression, classification, clustering).- Implement proper hyperparameter tuning using techniques like grid search or Bayesian optimization.- Use cross-validation techniques suitable for chemical data (e.g., scaffold split for drug discovery tasks).- Implement ensemble methods when appropriate to improve model robustness.Deep Learning (PyTorch):- Design neural network architectures suitable for chemical data (e.g., graph neural networks for molecular property prediction).- Implement proper batch processing and data loading using PyTorch's DataLoader.- Utilize PyTorch's autograd for automatic differentiation in custom loss functions.- Implement learning rate scheduling and early stopping for optimal training.Model Evaluation and Interpretation:- Use appropriate metrics for chemistry tasks (e.g., RMSE, R², ROC AUC, enrichment factor).- Implement techniques for model interpretability (e.g., SHAP values, integrated gradients).- Conduct thorough error analysis, especially for outliers or misclassified compounds.- Visualize results using chemistry-specific plotting libraries (e.g., RDKit's drawing utilities).Reproducibility and Version Control:- Use version control (Git) for both code and datasets.- Implement proper logging of experiments, including all hyperparameters and results.- Use tools like MLflow or Weights & Biases for experiment tracking.- Ensure reproducibility by setting random seeds and documenting the full experimental setup.Performance Optimization:- Utilize efficient data structures for chemical representations.- Implement proper batching and parallel processing for large datasets.- Use GPU acceleration when available, especially for PyTorch models.- Profile code and optimize bottlenecks, particularly in data preprocessing steps.Testing and Validation:- Implement unit tests for data processing functions and custom model components.- Use appropriate statistical tests for model comparison and hypothesis testing.- Implement validation protocols specific to chemistry (e.g., time-split validation for QSAR models).Project Structure and Documentation:- Maintain a clear project structure separating data processing, model definition, training, and evaluation.- Write comprehensive docstrings for all functions and classes.- Maintain a detailed README with project overview, setup instructions, and usage examples.- Use type hints to improve code readability and catch potential errors.Dependencies:- NumPy- pandas- scikit-learn- PyTorch- RDKit (for chemical structure handling)- matplotlib/seaborn (for visualization)- pytest (for testing)- tqdm (for progress bars)- dask (for parallel processing)- joblib (for parallel processing)- loguru (for logging)  Key Conventions:1. Follow PEP 8 style guide for Python code.2. Use meaningful and descriptive names for variables, functions, and classes.3. Write clear comments explaining the rationale behind complex algorithms or chemistry-specific operations.4. Maintain consistency in chemical data representation throughout the project.Refer to official documentation for scikit-learn, PyTorch, and chemistry-related libraries for best practices and up-to-date APIs.Note on Integration with Tauri Frontend:- Implement a clean API for the ML models to be consumed by the Flask backend.- Ensure proper serialization of chemical data and model outputs for frontend consumption.- Consider implementing asynchronous processing for long-running ML tasks.
+
+# Project Structure and Execution Flow
+
+## Directory Structure
+```
+SequoiaMQ/
+├── main.py                 # Main entry point
+├── work_flow.py           # Core workflow implementation
+├── data_fetcher.py        # Data fetching module
+├── stock_selector.py      # Stock selection logic
+├── stock_cache.py         # Stock data caching
+├── utils.py              # Utility functions
+├── settings.py           # Configuration management
+├── logger_manager.py     # Logging management
+├── strategy/             # Strategy implementations
+│   ├── __init__.py
+│   ├── base.py          # Base strategy class
+│   ├── RSRS.py          # RSRS strategy
+│   ├── turtle_trade.py  # Turtle trading strategy
+│   ├── alpha_factors101.py # Alpha101 factors
+│   ├── alpha_factors191.py # Alpha191 factors
+│   ├── low_atr.py       # Low ATR strategy
+│   ├── low_backtrace_increase.py # Low backtrace strategy
+│   ├── keep_increasing.py # Keep increasing strategy
+│   ├── backtrace_ma250.py # MA250 backtrace strategy
+│   ├── enter.py         # Entry strategy
+│   └── composite_strategy.py # Composite strategy
+├── tests/               # Test files
+│   ├── __init__.py
+│   ├── test.py
+│   └── test_strategies.py
+├── GUI/                 # GUI related files
+│   ├── main_window.py   # Main window implementation
+│   ├── stock_chart.py   # Stock chart widget
+│   ├── watchlist_widget.py # Watchlist widget
+│   ├── strategy_selector_widget.py # Strategy selector
+│   ├── stock_search.py  # Stock search widget
+│   └── analysis_dialog.py # Analysis result dialog
+├── data/               # Data directory
+│   ├── watchlist.json  # Watchlist data
+│   └── strategy_settings.json # Strategy settings
+├── cache/              # Cache directory
+│   └── analysis/      # Analysis results cache
+├── logs/              # Log files directory
+├── summary/           # Analysis reports directory
+├── requirements.txt   # Python dependencies
+├── config.yaml       # Configuration file
+├── Dockerfile        # Docker configuration
+└── README.md         # Project documentation
+
+## Execution Flow
+
+### 1. Command Line Execution (python main.py)
+```
+main.py
+└── main()
+    ├── setup_environment()  # Set up directories and logging
+    │   └── LoggerManager initialization
+    ├── WorkFlow initialization
+    └── workflow.prepare()
+
+```
+
+### 2. GUI Execution (python main.py --gui)
+```
+main.py
+└── main()
+    ├── setup_environment()
+    │   └── LoggerManager initialization
+    ├── MainWindow initialization
+    │   ├── WorkFlow initialization
+    │   ├── StockSearchWidget initialization
+    │   ├── WatchlistWidget initialization
+    │   ├── StockChartWidget initialization
+    │   └── StrategySelector initialization
+    └── GUI Event Loop
+        ├── on_stock_selected()  # When stock is selected
+        │   ├── stock_chart.update_chart()
+        │   └── watchlist.add_stock()
+        ├── analyze_stocks()  # When analysis is triggered
+        │   ├── work_flow.analyze_stocks()
+        │   └── show_analysis_dialog()
+        └── on_strategies_changed()  # When strategies are updated
+            └── work_flow.set_strategies()
+```
+
+## Key Components Interaction
+
+1. Data Flow:
+   - DataFetcher: Handles all stock data retrieval
+   - StockCache: Manages data caching to improve performance
+   - StrategyAnalyzer: Processes stock data through selected strategies
+
+2. Analysis Flow:
+   - WorkFlow: Orchestrates the entire analysis process
+   - Strategy implementations: Provide specific analysis logic
+   - Summary generation: Compiles results into reports
+
+3. GUI Components:
+   - MainWindow: Central GUI container
+   - StockChart: Displays stock price charts
+   - WatchlistWidget: Manages user's stock watchlist
+   - StrategySelector: Configures analysis strategies
+
+4. Support Systems:
+   - LoggerManager: Centralized logging
+   - Settings: Configuration management
+   - Utils: Common utility functions
+
+## Error Handling and Recovery
+
+1. Checkpoint System:
+   - Saves progress during analysis
+   - Recovers from previous analysis point
+   - Prevents data loss on interruption
+
+2. Error Logging:
+   - Comprehensive error tracking
+   - Detailed error messages
+   - Stack trace preservation
+
+3. Performance Optimization:
+   - Parallel processing
+   - Caching mechanism
+   - Batch processing
+
+## Configuration Management
+
+1. config.yaml:
+   - Data paths
+   - Logging settings
+   - Performance parameters
+   - Strategy configurations
+
+2. Runtime Settings:
+   - Thread pool size
+   - Batch processing size
+   - Cache management
+   - Progress reporting intervals
+
+# Data Processing Flow
+
+## Core Components and Responsibilities
+
+1. DataFetcher (data_fetcher.py):
+   - Primary responsibility: Data retrieval and caching
+   - Functions:
+     - get_stock_data(): Retrieves stock data with caching
+     - _fetch_stock_data(): Handles actual data fetching
+     - _validate_data(): Validates data integrity
+     - _standardize_columns(): Standardizes column names
+
+2. StrategyAnalyzer (strategy_analyzer.py):
+   - Primary responsibility: Stock analysis and strategy execution
+   - Functions:
+     - analyze_stock(): Main entry point for stock analysis
+     - _preprocess_data(): Prepares data for strategy analysis
+   - Manages all trading strategies
+   - Contains its own DataFetcher instance
+
+3. WorkFlow (work_flow.py):
+   - Primary responsibility: Orchestration and parallel processing
+   - Functions:
+     - analyze_stocks(): Manages parallel stock analysis
+     - process_stock_data(): Individual stock processing
+     - prepare(): Main workflow entry point
+   - Handles checkpointing and progress reporting
+   - Uses StrategyAnalyzer for actual analysis
+
+## Data Flow
+
+1. Stock List Acquisition:
+   ```
+   utils.get_stock_info()
+   └── Filters out:
+       ├── ST stocks
+       ├── Delisted stocks
+       ├── STAR Market (科创板)
+       └── Beijing Exchange stocks
+   ```
+
+2. Stock Analysis Process:
+   ```
+   WorkFlow.analyze_stocks(stock_list)
+   └── ThreadPoolExecutor
+       └── process_stock_data(stock)
+           └── StrategyAnalyzer.analyze_stock(code)
+               ├── DataFetcher.get_stock_data()
+               ├── _preprocess_data()
+               └── Run all strategies
+   ```
+
+3. Data Caching:
+   ```
+   DataFetcher
+   ├── Cache check
+   │   └── Use cached data if valid
+   └── Fresh data fetch
+       ├── Fetch from API
+       ├── Validate data
+       └── Save to cache
+   ```
+
+## Performance Optimization
+
+1. Parallel Processing:
+   - ThreadPoolExecutor for concurrent stock analysis
+   - Configurable number of workers
+   - Batch processing support
+
+2. Caching Strategy:
+   - 24-hour cache duration
+   - Validates cache before use
+   - Stores preprocessed data
+
+3. Error Handling:
+   - Retry mechanism for API calls
+   - Comprehensive error logging
+   - Graceful failure handling
+
+4. Progress Tracking:
+   - Real-time progress bars
+   - Regular statistics updates
+   - Checkpoint system
+
+## Configuration
+
+1. Cache Settings:
+   ```python
+   cache_duration = 24 * 60 * 60  # 24 hours
+   max_retries = 3
+   retry_delay = 2
+   ```
+
+2. Threading:
+   ```python
+   max_workers = min(32, (os.cpu_count() or 1) * 4)
+   batch_size = 50
+   ```
+
+3. Data Validation:
+   - Required columns: ['open', 'high', 'low', 'close', 'volume']
+   - Non-null value checks
+   - Volume > 0 validation
+
+## Error Recovery
+
+1. Checkpoint System:
+   - Saves progress every 10 stocks
+   - Records processed stocks
+   - Maintains analysis results
+
+2. Retry Mechanism:
+   - Exponential backoff
+   - Configurable retry attempts
+   - Detailed error logging
+</rewritten_file>

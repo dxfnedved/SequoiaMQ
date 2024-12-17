@@ -2,12 +2,12 @@
 
 import os
 import sys
-import logging
 from datetime import datetime
-from pathlib import Path
 from work_flow import WorkFlow
 from logger_manager import LoggerManager
 import traceback
+from PySide6.QtWidgets import QApplication
+from GUI import MainWindow
 
 def setup_environment():
     """设置运行环境"""
@@ -39,20 +39,27 @@ def main():
         mode = "GUI模式" if is_gui_mode else "命令行模式"
         logger.info(f"启动{mode}")
         
-        # 创建工作流实例
-        workflow = WorkFlow(logger_manager=logger_manager)
-        
-        # 执行分析任务
-        logger.info("开始执行分析任务...")
-        success = workflow.prepare()
-        
-        if success:
-            logger.info("分析任务成功完成")
-            return 0
+        if is_gui_mode:
+            # GUI模式
+            app = QApplication(sys.argv)
+            window = MainWindow()
+            window.show()
+            return app.exec_()
         else:
-            logger.error("分析任务执行失败")
-            return 1
+            # 命令行模式
+            workflow = WorkFlow(logger_manager=logger_manager)
             
+            # 执行分析任务
+            logger.info("开始执行分析任务...")
+            success = workflow.prepare()
+            
+            if success:
+                logger.info("分析任务成功完成")
+                return 0
+            else:
+                logger.error("分析任务执行失败")
+                return 1
+                
     except Exception as e:
         if 'logger' in locals():
             logger.error(f"系统运行出错: {str(e)}")

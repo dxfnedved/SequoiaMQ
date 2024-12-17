@@ -1,13 +1,12 @@
 # -*- coding: UTF-8 -*-
 import datetime
 import akshare as ak
-import pandas as pd
 from logger_manager import LoggerManager
 import os
 import time
 import json
-import numpy as np
 import traceback
+from colorama import Fore, Style
 
 logger = LoggerManager().get_logger("utils")
 
@@ -72,7 +71,7 @@ def is_stock_active(code, name=None):
 def get_stock_list():
     """获取有效的A股列表（剔除ST、退市、科创板和北交所股票）"""
     max_retries = 3
-    retry_delay = 2
+    retry_delay = 0.01
     
     for attempt in range(max_retries):
         try:
@@ -116,7 +115,7 @@ def get_stock_list():
                 if code.startswith('8'):
                     return False
                     
-                # 检查股票是否处于正���交易状态
+                # 检查股票是否处于正常交易状态
                 return is_stock_active(code, name)
                 
             # 应用过滤条件
@@ -364,3 +363,112 @@ def get_stock_name_dict():
         logger.error(f"获取股票名称字典失败: {str(e)}")
         logger.error(traceback.format_exc())
         return {}
+
+def get_stock_info():
+    """获取A股列表（已剔除ST、退市、科创板和北交所股票）"""
+    logger = LoggerManager().get_logger("utils")
+    max_retries = 3
+    retry_delay = 0.1
+    
+    for attempt in range(max_retries):
+
+        print(f"{Fore.CYAN}正在从接口获取股票列表...{Style.RESET_ALL}")
+        # 获取股票列表
+        stock_info = ak.stock_zh_a_spot_em()
+            
+        if stock_info is None or stock_info.empty:
+            raise ValueError("获取到的股票列表为空")
+                
+            # 获取已退市股票列表
+        try:
+            delisted = ak.stock_info_sz_delist("终止上市公司")
+            delisted_codes = set(delisted['证券代码'].astype(str).str.zfill(6))
+                
+                # delisted_sh = ak.stock_info_sh_delist()
+                # delisted_codes.update(delisted_sh['COMPANY_CODE'].astype(str).str.zfill(6))
+        except Exception as e:
+            logger.warning(f"获取退市股票列表失败: {str(e)}")
+            delisted_codes = set()
+                
+            # 获取新股列表
+            # try:
+            #     new_stocks = ak.stock_zh_a_new()
+            #     not_listed = set(new_stocks[~new_stocks['上市日期'].notna()]['代码'].astype(str))
+            # except Exception as e:
+            #     logger.warning(f"获取新股列表失败: {str(e)}")
+            #     not_listed = set()
+            
+            # 预先过滤掉不需要的股票
+        stock_info = stock_info[
+                # 只保留主板、中小板、创业板
+            stock_info['代码'].str.match('^(000|001|002|003|300|600|601|603|605)') &
+                # 排除ST股票
+            ~stock_info['名称'].str.contains('ST', case=False) &
+                # 排除退市股票
+            ~stock_info['名称'].str.contains('退') &
+                # 排除科创板
+            ~stock_info['代码'].str.startswith('688') &
+                # 排除北交所
+            ~stock_info['代码'].str.startswith('8') &
+                # 排除已知退市股票
+            ~stock_info['代码'].isin(delisted_codes) 
+                # 排除未上市新股
+                # ~stock_info['代码'].isin(not_listed)
+            ]
+            
+            # 进一步验证股票状态
+        valid_stocks = []
+        for _, row in stock_info.iterrows():
+            code = row['代码']
+            name = row['名称']
+                
+                # try:
+                #     # # 获取股票最新行情以验证是否可交易
+                    # quote = ak.stock_zh_a_hist(symbol=code, period="daily", adjust="qfq")
+                    # if quote is None or quote.empty:
+                    #     logger.warning(f"股票 {code} ({name}) 无法获取行情数据，可能已退市或未上市")
+                    #     continue
+                        
+            market_type = 'main' if code.startswith(('000', '001', '600', '601')) else \
+                            'sme' if code.startswith(('002', '003')) else \
+                            'gem' if code.startswith('300') else 'other'
+                                
+            valid_stocks.append({
+                    'code': code,
+                    'name': name,
+                    'market': market_type
+                })
+                # except Exception as e:
+                #     logger.warning(f"验证股票 {code} ({name}) 状态失败: {str(e)}")
+                #     continue
+            
+            # 统计信息
+        main_board = len([s for s in valid_stocks if s['market'] == 'main'])
+        sme_board = len([s for s in valid_stocks if s['market'] == 'sme'])
+        gem_board = len([s for s in valid_stocks if s['market'] == 'gem'])
+            
+        stats = f"""
+{Fore.GREEN}A股列表获取成功:{Style.RESET_ALL}
+{Fore.CYAN}- 原始数量: {len(stock_info)}
+- 有效数量: {len(valid_stocks)}
+- 过滤掉的股票: {len(stock_info) - len(valid_stocks)}
+- 市场分布:
+  主板: {main_board}
+  中小板: {sme_board}
+  创业板: {gem_board}{Style.RESET_ALL}
+"""
+        print(stats)
+        logger.info(stats)
+            
+        return valid_stocks
+            
+    #     except Exception as e:
+    #         print(f"{Fore.RED}获取股票列表失败 (尝试 {attempt + 1}/{max_retries}): {str(e)}{Style.RESET_ALL}")
+    #         logger.error(f"获取股票列表失败 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
+    #         logger.error(traceback.format_exc())
+    #         if attempt < max_retries - 1:
+    #             time.sleep(retry_delay * (2 ** attempt))  # 指数退避
+    #         else:
+    #             return []
+                
+    # return []

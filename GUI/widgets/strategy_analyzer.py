@@ -1,6 +1,7 @@
 """Strategy analyzer widget implementation."""
 
-
+from PySide6.QtCore import QObject
+import pandas as pd
 from datetime import datetime
 from data_fetcher import DataFetcher
 from logger_manager import LoggerManager
@@ -11,12 +12,8 @@ from strategy.low_atr import LowATRStrategy
 from strategy.low_backtrace_increase import LowBacktraceIncreaseStrategy
 from strategy.keep_increasing import KeepIncreasingStrategy
 from strategy.backtrace_ma250 import BacktraceMA250Strategy
-from strategy.alpha_factors191 import Alpha191Strategy
-from strategy.alpha360 import Alpha360Strategy
-from strategy.enter import EnterStrategy
-from strategy.composite_strategy import CompositeStrategy
 
-class StrategyAnalyzer():
+class StrategyAnalyzer(QObject):
     """策略分析器"""
     
     def __init__(self, logger_manager=None):
@@ -33,55 +30,30 @@ class StrategyAnalyzer():
             'LowATRStrategy': LowATRStrategy(logger_manager=self.logger_manager),
             'LowBacktraceStrategy': LowBacktraceIncreaseStrategy(logger_manager=self.logger_manager),
             'KeepIncreasingStrategy': KeepIncreasingStrategy(logger_manager=self.logger_manager),
-            'BacktraceMA250Strategy': BacktraceMA250Strategy(logger_manager=self.logger_manager),
-            'Alpha191Strategy': Alpha191Strategy(logger_manager=self.logger_manager),
-            'Alpha360Strategy': Alpha360Strategy(logger_manager=self.logger_manager),
-            'EnterStrategy': EnterStrategy(logger_manager=self.logger_manager),
-            'CompositeStrategy': CompositeStrategy(logger_manager=self.logger_manager)
+            'BacktraceMA250Strategy': BacktraceMA250Strategy(logger_manager=self.logger_manager)
         }
         
     def analyze_stock(self, code):
-        """分析单只股票
-        
-        Args:
-            code (str): 股票代码
-            
-        Returns:
-            dict: 分析结果，包含各个策略的信号
-        """
+        """分析单只股票"""
         try:
-            self.logger.info(f"开始分析股票 {code}")
-            
             # 获取数据
-            data = self.data_fetcher.get_stock_data({'code': code})
+            data = self.data_fetcher.fetch_stock_data(code)
             if data is None:
                 self.logger.error(f"获取股票 {code} 数据失败")
-                return None
-                
-            # 预处理数据
-            data = self._preprocess_data(data)
-            if data is None:
-                self.logger.error(f"预处理股票 {code} 数据失败")
                 return None
                 
             # 分析结果
             results = {
                 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'code': code,
-                'data_date': data.index[-1].strftime('%Y-%m-%d')
+                'code': code
             }
             
             # 运行每个策略
             for strategy_id, strategy in self.strategies.items():
-                try:
-                    strategy_result = strategy.analyze(data)
-                    if strategy_result:
-                        results[strategy_id] = strategy_result
-                except Exception as e:
-                    self.logger.error(f"策略 {strategy_id} 分析股票 {code} 失败: {str(e)}")
-                    continue
+                strategy_result = strategy.analyze(data)
+                if strategy_result:
+                    results[strategy_id] = strategy_result
                     
-            self.logger.info(f"完成股票 {code} 分析")
             return results
             
         except Exception as e:
