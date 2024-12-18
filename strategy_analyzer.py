@@ -15,6 +15,7 @@ from strategy.alpha_factors191 import Alpha191Strategy
 from strategy.alpha360 import Alpha360Strategy
 from strategy.enter import EnterStrategy
 from strategy.composite_strategy import CompositeStrategy
+from strategy.modular_strategy import ModularStrategy
 
 class StrategyAnalyzer():
     """策略分析器"""
@@ -37,7 +38,8 @@ class StrategyAnalyzer():
             'Alpha191Strategy': Alpha191Strategy(logger_manager=self.logger_manager),
             'Alpha360Strategy': Alpha360Strategy(logger_manager=self.logger_manager),
             'EnterStrategy': EnterStrategy(logger_manager=self.logger_manager),
-            'CompositeStrategy': CompositeStrategy(logger_manager=self.logger_manager)
+            'CompositeStrategy': CompositeStrategy(logger_manager=self.logger_manager),
+            'ModularStrategy': ModularStrategy(logger_manager=self.logger_manager)
         }
         
     def analyze_stock(self, code):

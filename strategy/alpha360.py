@@ -70,7 +70,7 @@ class Alpha360Strategy(BaseStrategy):
         return pd.DataFrame(factors)
         
     def calculate_trend_factors(self, data):
-        """计���趋势类因子"""
+        """计算趋势类因子"""
         close = data['close']
         
         factors = {}

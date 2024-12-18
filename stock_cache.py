@@ -6,6 +6,7 @@ import akshare as ak
 from pypinyin import lazy_pinyin, Style
 from logger_manager import LoggerManager
 from utils import is_stock_active
+from settings import STOCK_LIST_CACHE_DIR
 
 class StockCache:
     """股票信息缓存管理器"""
@@ -13,14 +14,8 @@ class StockCache:
     def __init__(self, logger_manager=None):
         self.logger_manager = logger_manager or LoggerManager()
         self.logger = self.logger_manager.get_logger("stock_cache")
-        self.cache_dir = "cache"
-        self.ensure_cache_dir()
+        self.cache_dir = STOCK_LIST_CACHE_DIR
         
-    def ensure_cache_dir(self):
-        """确保缓存目录存在"""
-        if not os.path.exists(self.cache_dir):
-            os.makedirs(self.cache_dir)
-            
     def get_cache_path(self):
         """获取当天的缓存文件路径"""
         today = datetime.now().strftime('%Y%m%d')
@@ -47,7 +42,7 @@ class StockCache:
                     
                     df = pd.DataFrame(valid_stocks)
                     if not df.empty:
-                        self.logger.info(f"从缓存加载了 {len(df)} 只有效股票信息")
+                        self.logger.info(f"从缓存加载了 {len(df)} 只有效股��信息")
                         return df
                     else:
                         self.logger.warning("缓存中没有有效股票，重新获取")

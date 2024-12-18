@@ -17,3 +17,5 @@ cache
 *.json
 
 *.json
+summary
+*.xlsx

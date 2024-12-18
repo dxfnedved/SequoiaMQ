@@ -9,6 +9,23 @@ import traceback
 
 logger = LoggerManager().get_logger("settings")
 
+# Base directories
+BASE_CACHE_DIR = 'cache'
+
+# Cache subdirectories
+STOCK_DATA_CACHE_DIR = os.path.join(BASE_CACHE_DIR, 'stock_data')
+STOCK_LIST_CACHE_DIR = os.path.join(BASE_CACHE_DIR, 'stock_list')
+ANALYSIS_CACHE_DIR = os.path.join(BASE_CACHE_DIR, 'analysis')
+
+# Cache settings
+CACHE_DURATION = 24 * 60 * 60  # 24 hours in seconds
+MAX_RETRIES = 3
+RETRY_DELAY = 2
+
+# Ensure cache directories exist
+for cache_dir in [STOCK_DATA_CACHE_DIR, STOCK_LIST_CACHE_DIR, ANALYSIS_CACHE_DIR]:
+    os.makedirs(cache_dir, exist_ok=True)
+
 def init():
     """初始化配置"""
     try:
@@ -38,7 +55,7 @@ def init():
                 }
             }
             
-            # 创建配置文件
+            # 创���配置文件
             with open(config_file, 'w', encoding='utf-8') as f:
                 json.dump(default_config, f, indent=4, ensure_ascii=False)
                 

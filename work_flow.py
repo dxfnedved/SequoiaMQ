@@ -13,6 +13,7 @@ import traceback
 from tqdm import tqdm
 from colorama import init, Fore, Style
 import utils
+from settings import ANALYSIS_CACHE_DIR
 
 # 初始化colorama，确保在Windows上也能正常显示颜色
 init(autoreset=True)
@@ -98,7 +99,7 @@ class WorkFlow:
         self.batch_size = 200  # 批处理大小
         
         # 缓存和断点相关
-        self.cache_dir = 'cache/analysis'
+        self.cache_dir = ANALYSIS_CACHE_DIR
         self.checkpoint_file = os.path.join(self.cache_dir, 'checkpoint.json')
         os.makedirs(self.cache_dir, exist_ok=True)
 
@@ -122,6 +123,13 @@ class WorkFlow:
             if os.path.exists(self.checkpoint_file):
                 with open(self.checkpoint_file, 'r', encoding='utf-8') as f:
                     checkpoint_data = json.load(f)
+                    
+                # 检查检查点时效性（24小时）
+                checkpoint_time = datetime.strptime(checkpoint_data['timestamp'], '%Y%m%d_%H%M%S')
+                if (datetime.now() - checkpoint_time).total_seconds() > 24 * 60 * 60:
+                    self.logger.info("检查点已过期，将重新开始分析")
+                    return [], []
+                    
                 self.logger.info(f"加载检查点成功: {len(checkpoint_data['processed_stocks'])} 只股票")
                 return checkpoint_data['processed_stocks'], checkpoint_data['results']
             return [], []
@@ -192,29 +200,56 @@ class WorkFlow:
             return False
 
     def analyze_stocks(self, stock_list):
-        """使用多线程分析股票"""
+        """分析股票列表"""
         try:
-            # 加载检查点
-            processed_stocks, cached_results = self._load_checkpoint()
+            # 获取当前有效的股票代码集合
+            current_stock_codes = {stock['code'] for stock in stock_list}
             
-            # 过滤已处理的股票
-            remaining_stocks = [stock for stock in stock_list 
-                              if stock['code'] not in processed_stocks]
+            # 加载检查点，但只保留当前有效的股票的结果
+            processed_stocks, checkpoint_results = self._load_checkpoint()
+            valid_processed_stocks = []
+            valid_results = []
             
-            if cached_results:
-                self.analysis_results.extend(cached_results)
-                print(f"\n从检查点恢复 {len(cached_results)} 只股票的分析结果")
-                
+            if processed_stocks and checkpoint_results:
+                # 检查检查点中的结果是否仍然有效
+                for stock_code, result in zip(processed_stocks, checkpoint_results):
+                    if stock_code in current_stock_codes:
+                        # 检查结果的时效性（确保结果不超过24小时）
+                        result_time = datetime.strptime(result['timestamp'], '%Y-%m-%d %H:%M:%S')
+                        if (datetime.now() - result_time).total_seconds() <= 24 * 60 * 60:
+                            valid_processed_stocks.append(stock_code)
+                            valid_results.append(result)
+                        else:
+                            self.logger.info(f"股票 {stock_code} 的分析结果已过期，将重新分析")
+                    
+                if len(valid_processed_stocks) != len(processed_stocks):
+                    removed_count = len(processed_stocks) - len(valid_processed_stocks)
+                    self.logger.info(f"从检查点中移除了 {removed_count} 只无效或过期的股票")
+                    
+                if valid_processed_stocks:
+                    self.logger.info(f"从检查点恢复 {len(valid_processed_stocks)} 只有效股票的分析结果")
+                    self.analysis_results = valid_results
+                    processed_stocks = valid_processed_stocks
+                else:
+                    self.logger.info("检查点中没有有效的股票结果，将重新开始分析")
+                    processed_stocks = []
+                    self.analysis_results = []
+            
+            # 过滤掉已处理的股票
+            remaining_stocks = [stock for stock in stock_list if stock['code'] not in set(processed_stocks)]
+            
             if not remaining_stocks:
-                print("\n所有股票已分析完成，直接生成报告")
+                self.logger.info("所有股票都已分析完成")
                 return self.analysis_results
                 
+            total_stocks = len(remaining_stocks)
+            self.logger.info(f"开始分析剩余的 {total_stocks} 只股票")
+            
             # 初始化统计信息
             start_time = time.time()
-            total_stocks = len(remaining_stocks)
-            success_count = len(cached_results)
+            success_count = len(valid_results)
             error_count = 0
-            cache_hit_count = sum(1 for r in cached_results if r.get('from_cache', False))
+            cache_hit_count = sum(1 for r in valid_results if r.get('from_cache', False))
             
             # 创建进度条
             progress_bar = tqdm(
@@ -223,7 +258,7 @@ class WorkFlow:
                 bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
                 ncols=100,
                 unit="只",
-                initial=len(cached_results)
+                initial=len(valid_results)
             )
             
             # 使用线程池处理

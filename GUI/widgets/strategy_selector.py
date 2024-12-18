@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QPushButton, QLabel, QSpinBox, QDoubleSpinBox, QFormLayout
 )
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, Qt
 import json
 import os
 from logger_manager import LoggerManager
