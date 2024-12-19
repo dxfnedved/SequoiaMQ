@@ -125,6 +125,10 @@ class WorkFlow:
                     checkpoint_data = json.load(f)
                     
                 # 检查检查点时效性（24小时）
+                if 'timestamp' not in checkpoint_data:
+                    self.logger.info("检查点数据格式无效，将重新开始分析")
+                    return [], []
+                    
                 checkpoint_time = datetime.strptime(checkpoint_data['timestamp'], '%Y%m%d_%H%M%S')
                 if (datetime.now() - checkpoint_time).total_seconds() > 24 * 60 * 60:
                     self.logger.info("检查点已过期，将重新开始分析")
@@ -215,12 +219,18 @@ class WorkFlow:
                 for stock_code, result in zip(processed_stocks, checkpoint_results):
                     if stock_code in current_stock_codes:
                         # 检查结果的时效性（确保结果不超过24小时）
-                        result_time = datetime.strptime(result['timestamp'], '%Y-%m-%d %H:%M:%S')
-                        if (datetime.now() - result_time).total_seconds() <= 24 * 60 * 60:
-                            valid_processed_stocks.append(stock_code)
-                            valid_results.append(result)
-                        else:
-                            self.logger.info(f"股票 {stock_code} 的分析结果已过期，将重新分析")
+                        if 'timestamp' not in result:
+                            continue
+                        try:
+                            result_time = datetime.strptime(result['timestamp'], '%Y-%m-%d %H:%M:%S')
+                            if (datetime.now() - result_time).total_seconds() <= 24 * 60 * 60:
+                                valid_processed_stocks.append(stock_code)
+                                valid_results.append(result)
+                            else:
+                                self.logger.info(f"股票 {stock_code} 的分析结果已过期，将重新分析")
+                        except (ValueError, TypeError):
+                            self.logger.warning(f"股票 {stock_code} 的时间戳格式无效，将重新分析")
+                            continue
                     
                 if len(valid_processed_stocks) != len(processed_stocks):
                     removed_count = len(processed_stocks) - len(valid_processed_stocks)
@@ -364,6 +374,10 @@ class WorkFlow:
                 
             self.logger.info(f"获取到 {len(stock_list)} 只股票")
             
+            # # 执行全局新闻分析（只执行一次）
+            # if not self.strategy_analyzer.perform_news_analysis():
+            #     self.logger.warning("全局新闻分析未能完成，将继续执行其他策略")
+            
             # 分析股票
             results = self.analyze_stocks(stock_list)
             if not results:
@@ -382,5 +396,62 @@ class WorkFlow:
             self.logger.error(f"工作流程准备失败: {str(e)}")
             self.logger.error(traceback.format_exc())
             return False
+
+    def save_analysis_results(self, stock_code, results):
+        """保存分析结果"""
+        try:
+            # 保存常规分析结果
+            if results.get('signals'):
+                signals_df = pd.DataFrame(results['signals'])
+                signals_df.to_excel(
+                    os.path.join(self.summary_dir, f'{stock_code}_signals.xlsx'),
+                    index=False
+                )
+                
+            # 保存新闻分析结果
+            news_signals = [s for s in results.get('signals', []) 
+                           if s.get('strategy') == 'NewsStrategy']
+            if news_signals:
+                news_df = pd.DataFrame(news_signals)
+                # 确保summary_dir存在
+                os.makedirs(self.summary_dir, exist_ok=True)
+                # 保存到单独的新闻分析表格
+                news_file = os.path.join(self.summary_dir, f'{stock_code}_news_analysis.xlsx')
+                news_df.to_excel(news_file, index=False)
+                self.logger.info(f"新闻分析结果已保存到: {news_file}")
+                
+        except Exception as e:
+            self.logger.error(f"保存分析结果失败: {str(e)}")
+            
+    def process_stock_data(self, stock_code):
+        """处理单个股票数据"""
+        try:
+            # 获取股票数据
+            data = self.data_fetcher.get_stock_data(stock_code)
+            if data is None:
+                return None
+            
+            # 初始化结果字典
+            results = {'signals': []}
+            
+            # 运行所有策略
+            for strategy in self.strategies:
+                try:
+                    signals = strategy.get_signals(data)
+                    if signals:
+                        results['signals'].extend(signals)
+                except Exception as e:
+                    self.logger.error(f"策略 {strategy.name} 分析失败: {str(e)}")
+                    continue
+                    
+            # 保存分析结果
+            if results['signals']:
+                self.save_analysis_results(stock_code, results)
+                
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"处理股票 {stock_code} 数据失败: {str(e)}")
+            return None
 
 

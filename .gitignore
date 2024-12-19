@@ -19,3 +19,5 @@ cache
 *.json
 summary
 *.xlsx
+.ipynb_checkpoints
+.pytest_cache

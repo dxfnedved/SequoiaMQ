@@ -188,7 +188,7 @@ class DataFetcher:
                 
             # 获取数据
             self.logger.info(f"从网络获取数据: {code}")
-            df = ak.stock_zh_a_hist(symbol=code, adjust="qfq")
+            df = ak.stock_zh_a_hist(symbol=code,start_date="20240101",adjust="qfq")
             
             # 标准化数据
             df = self._standardize_columns(df)
