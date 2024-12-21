@@ -15,7 +15,7 @@ results
 
 cache
 *.json
-
+.env
 *.json
 summary
 *.xlsx
