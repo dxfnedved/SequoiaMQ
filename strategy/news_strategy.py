@@ -1,273 +1,256 @@
+from strategy.base import BaseStrategy
+from news_crawler import NewsCrawler
+from llm_interface import LLMInterface
 import os
 import json
-from datetime import datetime, timedelta
-import pandas as pd
-from dotenv import load_dotenv
-from strategy.base import BaseStrategy
-import akshare as ak
-from openai import OpenAI
 import time
+from settings import NEWS_CACHE_DIR
 
 class NewsStrategy(BaseStrategy):
-    """新闻舆情策略 - 全局分析版本"""
+    """新闻分析策略 - 市场整体分析"""
+    
     def __init__(self, logger_manager=None):
         super().__init__(logger_manager)
         self.name = "NewsStrategy"
-        load_dotenv()  # 加载环境变量
+        self.news_crawler = NewsCrawler(logger_manager)
+        self.llm_interface = LLMInterface(logger_manager)
+        self.cache_dir = NEWS_CACHE_DIR
+        os.makedirs(self.cache_dir, exist_ok=True)
+        self.cache_file = os.path.join(self.cache_dir, 'news_analysis.json')
+        self.news_data = None
+        self.analysis_result = None
         
-        # 初始化OpenAI客户端
-        self.client = OpenAI(
-            api_key=os.getenv('LLM_API_KEY'),
-            base_url=os.getenv('LLM_API_ENDPOINT')
-        )
+        # 重点关注的行业
+        self.focus_industries = [
+            "新质生产力",
+            "半导体",
+            "消费电子",
+            "人工智能",
+            "券商"
+        ]
         
-        # 新闻分析参数
-        self.news_days = 2  # 分析最近2天的新闻
-        self.min_relevance = 0.6  # 最小相关度阈值
+    def _get_llm_prompt(self, news_data):
+        """生成大模型分析提示词"""
+        prompt = """
+        作为一个专业的金融分析师，请分析以下财经新闻，重点关注以下行业：
+        - 新质生产力
+        - 半导体
+        - 消费电子
+        - 人工智能
+        - 券商
+
+        新闻内容如下：
+        {news_content}
+
+        请提供以下格式的分析结果：
+        1. A股市场整体趋势分析
+        2. 重点行业分析（仅针对上述行业）
+        3. 市场风险提示
+        4. 投资建议
+
+        请以JSON格式输出，包含以下字段：
+        {{
+            "market_trend": {{
+                "direction": "上涨/震荡/下跌",
+                "analysis": "市场趋势分析",
+                "confidence": "高/中/低"
+            }},
+            "industry_analysis": [
+                {{
+                    "industry": "行业名称",
+                    "trend": "上涨/震荡/下跌",
+                    "analysis": "行业分析",
+                    "hot_topics": ["热点1", "热点2"]
+                }}
+            ],
+            "risk_warnings": ["风险1", "风险2"],
+            "investment_advice": {{
+                "short_term": "短期投资建议",
+                "mid_term": "中期投资建议",
+                "focus_sectors": ["重点关注行业1", "重点关注行业2"]
+            }}
+        }}
+        """
         
-        # 缓存全局分析结果
-        self.global_analysis = None
-        self.last_analysis_time = None
-        self.analysis_cache_duration = 4 * 60 * 60  # 4小时更新一次
+        # 准备新闻内容
+        news_content = "\n\n".join([
+            f"标题：{row['title']}\n"
+            f"时间：{row['time']}\n"
+            f"内容：{row['content']}\n"
+            for _, row in news_data.iterrows()
+        ])
         
-    def get_news(self):
-        """获取新闻数据"""
+        return prompt.format(news_content=news_content)
+        
+    def _analyze_with_llm(self, prompt):
+        """使用大模型进行分析"""
         try:
-            # 计算时间范围
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=self.news_days)
-            
-            try:
-                # 获取东方财富新闻
-                news_df = ak.stock_news_em()
-                if news_df is None or news_df.empty:
-                    self.logger.warning("未获取到东方财富新闻数据")
-                    return None
-                    
-                # 确保必要的列存在
-                required_columns = ['时间', '标题', '内容']
-                if not all(col in news_df.columns for col in required_columns):
-                    self.logger.error("新闻数据缺少必要的列")
-                    return None
-                    
-                # 重命名列
-                news_df = news_df.rename(columns={
-                    '时间': 'datetime',
-                    '标题': 'title',
-                    '内容': 'content'
-                })
+            result = self.llm_interface.analyze_news(prompt)
+            if not result:
+                return self._get_default_analysis()
                 
-                # 转换datetime列
-                news_df['datetime'] = pd.to_datetime(news_df['datetime'], format='%Y-%m-%d %H:%M:%S')
+            # 验证返回的JSON格式
+            required_fields = ['market_trend', 'industry_analysis', 'risk_warnings', 'investment_advice']
+            if not all(field in result for field in required_fields):
+                self.logger.warning("LLM返回的分析结果缺少必要字段，使用默认分析")
+                return self._get_default_analysis()
                 
-                # 删除无效的datetime记录
-                news_df = news_df.dropna(subset=['datetime'])
-                
-                # 过滤时间范围
-                news_df = news_df[
-                    (news_df['datetime'] >= start_date) &
-                    (news_df['datetime'] <= end_date)
-                ]
-                
-                if news_df.empty:
-                    self.logger.warning("过滤后没有符合时间范围的新闻")
-                    return None
-                    
-                return news_df
-                
-            except Exception as e:
-                self.logger.error(f"获取东方财富新闻数据失败: {str(e)}")
-                return None
-            
-        except Exception as e:
-            self.logger.error(f"获取新闻数据失败: {str(e)}")
-            return None
-            
-    def analyze_news_sentiment(self, news_list):
-        """使用OpenAI分析新闻情感"""
-        try:
-            # 限制新闻数量，避免token超限
-            max_news = 20
-            if len(news_list) > max_news:
-                self.logger.info(f"新闻数量过多，将只分析最新的{max_news}条新闻")
-                news_list = sorted(news_list, key=lambda x: x['datetime'], reverse=True)[:max_news]
-            
-            # 格式化新闻列表，只包含必要信息
-            formatted_news = []
-            for news in news_list:
-                formatted_news.append({
-                    'datetime': news['datetime'].strftime('%Y-%m-%d %H:%M:%S'),
-                    'title': news['title'],
-                    'content': news['content'][:500] if len(news['content']) > 500 else news['content']  # 限制内容长度
-                })
-            
-            # 构建提示词，使用CoT方法
-            prompt = f"""请分析以下{len(formatted_news)}条新闻对A股市场的影响。让我们一步步思考：
-
-1. 首先，让我们分类这些新闻：
-   - 宏观经济新闻
-   - 行业政策新闻
-   - 公司新闻
-
-2. 然后，评估每类新闻的影响：
-   - 对整体市场的影响
-   - 对特定行业的影响
-   - 对个股的影响
-   - 影响的持续时间
-
-3. 接着，分析情绪因素：
-   - 市场情绪（乐观/悲观）
-   - 政策导向（利好/利空）
-   - 资金面（宽松/紧张）
-
-4. 最后，得出结论：
-   - 市场整体趋势判断
-   - 重点关注的行业
-   - 具体投资建议
-
-新闻内容：
-{json.dumps(formatted_news, ensure_ascii=False, indent=2)}
-
-请以JSON格式返回分析结果，包含以下字段：
-{
-    "market_sentiment": "整体市场情绪",
-    "policy_impact": "政策影响分析",
-    "capital_flow": "资金面分析",
-    "sector_analysis": [
-        {
-            "sector": "行业名称",
-            "impact": "影响程度",
-            "recommendation": "投资建议"
-        }
-    ],
-    "stock_picks": [
-        {
-            "code": "股票代码",
-            "name": "股票名称",
-            "reason": "推荐理由",
-            "signal": "买入/卖出/观望"
-        }
-    ],
-    "risk_factors": ["风险因素列表"],
-    "confidence_score": "分析置信度(0-1)",
-    "analysis_summary": "详细分析总结"
-}"""
-            
-            # 调用OpenAI API
-            response = self.client.chat.completions.create(
-                model="deepseek-chat",
-                messages=[
-                    {"role": "system", "content": "你是一个专业的金融分析师，擅长分析新闻对A股市场的影响。"},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-                max_tokens=2000
-            )
-            
-            # 解析返回结果
-            result = json.loads(response.choices[0].message.content)
             return result
             
         except Exception as e:
-            self.logger.error(f"分析新闻情感失败: {str(e)}")
-            return None
+            self.logger.error(f"大模型分析失败: {str(e)}")
+            return self._get_default_analysis()
+            
+    def _get_default_analysis(self):
+        """获取默认的分析结果"""
+        return {
+            "market_trend": {
+                "direction": "震荡",
+                "analysis": "市场整体呈现震荡态势，建议谨慎操作",
+                "confidence": "中"
+            },
+            "industry_analysis": [
+                {
+                    "industry": industry,
+                    "trend": "震荡",
+                    "analysis": f"{industry}行业维持震荡走势，需要关注政策和行业基本面变化",
+                    "hot_topics": ["政策支持", "技术创新"]
+                }
+                for industry in self.focus_industries
+            ],
+            "risk_warnings": [
+                "市场波动风险",
+                "政策调整风险",
+                "行业周期风险"
+            ],
+            "investment_advice": {
+                "short_term": "建议以观望为主，等待明确信号",
+                "mid_term": "关注行业龙头，把握结构性机会",
+                "focus_sectors": self.focus_industries[:3]
+            }
+        }
             
     def perform_global_analysis(self):
         """执行全局新闻分析"""
         try:
-            # 检查是否需要更新分析
-            current_time = datetime.now()
-            if (self.global_analysis is not None and 
-                self.last_analysis_time is not None and
-                (current_time - self.last_analysis_time).total_seconds() < self.analysis_cache_duration):
-                return self.global_analysis
-                
+            # 检查缓存
+            if os.path.exists(self.cache_file):
+                cache_time = os.path.getmtime(self.cache_file)
+                if time.time() - cache_time < 7200:  # 2小时内的缓存有效
+                    try:
+                        with open(self.cache_file, 'r', encoding='utf-8') as f:
+                            self.analysis_result = json.load(f)
+                            return True
+                    except json.JSONDecodeError:
+                        self.logger.warning("缓存文件损坏，将重新分析")
+            
             # 获取新闻数据
-            news_df = self.get_news()
-            if news_df is None or news_df.empty:
-                self.logger.warning("未获取到有效的新闻数据，跳过新闻分析")
-                return None
+            self.news_data = self.news_crawler.get_all_news()
+            if self.news_data.empty:
+                self.logger.warning("未获取到新闻数据，使用默认分析结果")
+                self.analysis_result = self._get_default_analysis()
+                return True
                 
-            # 准备新闻列表
-            news_list = news_df[['datetime', 'title', 'content']].to_dict('records')
+            # 生成提示词
+            prompt = self._get_llm_prompt(self.news_data)
             
-            # 分析新闻情感
-            analysis_result = self.analyze_news_sentiment(news_list)
-            if analysis_result is None:
-                self.logger.warning("新闻情感分析失败，跳过新闻分析")
-                return None
+            # 使用大模型分析
+            self.analysis_result = self._analyze_with_llm(prompt)
+            if not self.analysis_result:
+                self.logger.warning("新闻分析失败，使用默认分析结果")
+                self.analysis_result = self._get_default_analysis()
                 
-            # 更新缓存
-            self.global_analysis = analysis_result
-            self.last_analysis_time = current_time
-            
-            return analysis_result
+            # 保存缓存
+            try:
+                with open(self.cache_file, 'w', encoding='utf-8') as f:
+                    json.dump(self.analysis_result, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                self.logger.error(f"保存新闻分析缓存失败: {str(e)}")
+                
+            return True
             
         except Exception as e:
             self.logger.error(f"执行全局新闻分析失败: {str(e)}")
-            return None
+            self.analysis_result = self._get_default_analysis()
+            return True  # 返回True以继续执行其他策略
             
     def analyze(self, data):
-        """分析数据并生成交易信号"""
+        """分析单个股票"""
         try:
-            if not self._validate_data(data):
+            if not self.analysis_result:
+                self.logger.warning("没有全局新闻分析结果，使用默认分析")
+                self.analysis_result = self._get_default_analysis()
+                
+            # 获取股票所属行业
+            industry = self._get_stock_industry(data)
+            if not industry:
                 return None
                 
-            # 获取股票代码
-            code = data.name if hasattr(data, 'name') else None
-            if code is None:
+            # 只对重点关注的行业生成信号
+            if industry not in self.focus_industries:
                 return None
                 
-            # 获取全局分析结果
-            global_result = self.perform_global_analysis()
-            if global_result is None:
-                return None
-                
-            # 查找该股票的具体信号
-            stock_signal = None
-            for stock in global_result.get('stock_picks', []):
-                if stock['code'] == code:
-                    stock_signal = stock
+            # 查找行业分析
+            industry_info = None
+            for ind_analysis in self.analysis_result['industry_analysis']:
+                if ind_analysis['industry'] == industry:
+                    industry_info = ind_analysis
                     break
                     
-            # 生成信号
-            signal = "无"
-            if stock_signal:
-                signal = stock_signal['signal']
+            if not industry_info:
+                return None
                 
+            # 根据行业趋势生成信号
+            signal = self._generate_signal(industry_info)
+            
             return {
-                'signal': signal,
-                'market_sentiment': global_result['market_sentiment'],
-                'sector_analysis': global_result['sector_analysis'],
-                'confidence_score': global_result['confidence_score'],
-                'analysis_summary': global_result['analysis_summary'],
-                'stock_specific': stock_signal
+                'signal': signal['action'],
+                'factors': {
+                    'industry': industry,
+                    'trend': industry_info['trend'],
+                    'analysis': industry_info['analysis'],
+                    'market_trend': self.analysis_result['market_trend']['direction'],
+                    'confidence': self.analysis_result['market_trend']['confidence']
+                }
             }
             
         except Exception as e:
             self.logger.error(f"新闻策略分析失败: {str(e)}")
             return None
             
-    def get_signals(self, data):
-        """获取交易信号"""
+    def _get_stock_industry(self, data):
+        """获取股票所属行业"""
         try:
-            signals = []
-            result = self.analyze(data)
+            stock_info = {
+                'code': data.name if hasattr(data, 'name') else None,
+                'name': self.stock_names.get(data.name) if hasattr(data, 'name') else None
+            }
             
-            if result and result['signal'] != "无":
-                signals.append({
-                    'date': data.index[-1],
-                    'type': result['signal'],
-                    'strategy': self.name,
-                    'price': data['close'].iloc[-1],
-                    'market_sentiment': result['market_sentiment'],
-                    'confidence_score': result['confidence_score'],
-                    'analysis_summary': result['analysis_summary'],
-                    'stock_specific': result.get('stock_specific', {})
-                })
+            if not stock_info['code'] or not stock_info['name']:
+                return None
                 
-            return signals
-            
+            try:
+                return self.llm_interface.get_stock_industry(stock_info)
+            except Exception as e:
+                self.logger.error(f"获取股票行业失败: {str(e)}")
+                return None
+                
         except Exception as e:
-            self.logger.error(f"获取新闻策略信号失败: {str(e)}")
-            return []
+            self.logger.error(f"获取股票行业失败: {str(e)}")
+            return None
+            
+    def _generate_signal(self, industry_info):
+        """根据行业分析生成信号"""
+        try:
+            trend = industry_info['trend']
+            
+            if trend == '上涨':
+                return {'action': '买入'}
+            elif trend == '下跌':
+                return {'action': '卖出'}
+            else:
+                return {'action': '观望'}
+                
+        except Exception as e:
+            self.logger.error(f"生成信号失败: {str(e)}")
+            return {'action': '观望'}

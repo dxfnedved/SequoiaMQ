@@ -1,12 +1,11 @@
 # -*- encoding: UTF-8 -*-
-import yaml
 import os
 from logger_manager import LoggerManager
 import json
 from pathlib import Path
 import logging
 import traceback
-
+from datetime import datetime
 logger = LoggerManager().get_logger("settings")
 
 # Base directories
@@ -16,14 +15,17 @@ BASE_CACHE_DIR = 'cache'
 STOCK_DATA_CACHE_DIR = os.path.join(BASE_CACHE_DIR, 'stock_data')
 STOCK_LIST_CACHE_DIR = os.path.join(BASE_CACHE_DIR, 'stock_list')
 ANALYSIS_CACHE_DIR = os.path.join(BASE_CACHE_DIR, 'analysis')
+NEWS_CACHE_DIR = os.path.join(BASE_CACHE_DIR, 'news')
 
 # Cache settings
 CACHE_DURATION = 24 * 60 * 60  # 24 hours in seconds
 MAX_RETRIES = 3
 RETRY_DELAY = 2
+START_DATE = '20240101'
+END_DATE = datetime.now().strftime('%Y%m%d')
 
 # Ensure cache directories exist
-for cache_dir in [STOCK_DATA_CACHE_DIR, STOCK_LIST_CACHE_DIR, ANALYSIS_CACHE_DIR]:
+for cache_dir in [STOCK_DATA_CACHE_DIR, STOCK_LIST_CACHE_DIR, ANALYSIS_CACHE_DIR, NEWS_CACHE_DIR]:
     os.makedirs(cache_dir, exist_ok=True)
 
 def init():

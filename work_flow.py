@@ -40,7 +40,7 @@ def process_stock_data(args):
         # 分析数据
         result = strategy_analyzer.analyze_stock(code)
         
-        if result:
+        if result and 'strategy_results' in result:
             # 预处理结果
             processed_result = {
                 'code': code,
@@ -49,11 +49,11 @@ def process_stock_data(args):
                 'sell_signals': 0,
                 'strategies': [],
                 'signal_details': [],
-                'data_date': result.get('data_date', '')
+                'data_date': result.get('last_date', '')
             }
             
             # 统计买入卖出信号
-            for strategy_name, strategy_result in result.items():
+            for strategy_name, strategy_result in result['strategy_results'].items():
                 if isinstance(strategy_result, dict) and 'signal' in strategy_result:
                     signal = strategy_result['signal']
                     if signal == '买入':
@@ -63,7 +63,7 @@ def process_stock_data(args):
                             'strategy': strategy_name,
                             'type': '买入',
                             'factors': strategy_result.get('factors', {}),
-                            'strength': strategy_result.get('buy_signals', 1)
+                            'strength': strategy_result.get('buy_strength', 1)
                         })
                     elif signal == '卖出':
                         processed_result['sell_signals'] += 1
@@ -72,7 +72,7 @@ def process_stock_data(args):
                             'strategy': strategy_name,
                             'type': '卖出',
                             'factors': strategy_result.get('factors', {}),
-                            'strength': strategy_result.get('sell_signals', 1)
+                            'strength': strategy_result.get('sell_strength', 1)
                         })
             
             return processed_result
@@ -162,7 +162,7 @@ class WorkFlow:
             buy_signals = sum(1 for r in self.analysis_results if r and r.get('buy_signals', 0) > 0)
             sell_signals = sum(1 for r in self.analysis_results if r and r.get('sell_signals', 0) > 0)
             
-            # 创建汇总数据
+            # 创建��总数据
             summary = {
                 'timestamp': timestamp,
                 'total_stocks': total_stocks,
@@ -241,7 +241,7 @@ class WorkFlow:
                     self.analysis_results = valid_results
                     processed_stocks = valid_processed_stocks
                 else:
-                    self.logger.info("检查点中没有有效的股票结果，将重新开始分析")
+                    self.logger.info("检查点中没有有效的股票结果，将重新开始��析")
                     processed_stocks = []
                     self.analysis_results = []
             
@@ -302,11 +302,11 @@ class WorkFlow:
                         }, refresh=True)
                         
                         # 每处理10只股票保存一次检查点
-                        if (success_count + error_count) % 10 == 0:
+                        if (success_count + error_count) % 50 == 0:
                             self._save_checkpoint(processed_stocks, self.analysis_results)
                             
                         # 定期显示统计信息
-                        if (success_count + error_count) % 10 == 0:
+                        if (success_count + error_count) % 5000 == 0:
                             elapsed_time = time.time() - start_time
                             avg_time = elapsed_time / (success_count + error_count)
                             self._print_statistics(success_count, error_count, 
@@ -374,9 +374,9 @@ class WorkFlow:
                 
             self.logger.info(f"获取到 {len(stock_list)} 只股票")
             
-            # # 执行全局新闻分析（只执行一次）
-            # if not self.strategy_analyzer.perform_news_analysis():
-            #     self.logger.warning("全局新闻分析未能完成，将继续执行其他策略")
+            # 执行全局新闻分析（只执行一次）
+            if not self.strategy_analyzer.perform_news_analysis():
+                self.logger.warning("全局新闻分析未能完成，将继续执行其他策略")
             
             # 分析股票
             results = self.analyze_stocks(stock_list)
