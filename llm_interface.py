@@ -44,7 +44,7 @@ class LLMInterface:
             请按照以下步骤进行分析：
             1. 仔细阅读并理解所提供的信息
             2. 列出关键信息点和重要发现
-            3. 分析这���信息之间的关联性
+            3. 分析这些信息之间的关联性
             4. 推理可能的影响和结果
             5. 得出结论并提供建议
             
@@ -71,17 +71,6 @@ class LLMInterface:
                 "content": cot_prompt
             })
             
-            # 确保所有消息内容都是UTF-8编码
-            for msg in messages:
-                if isinstance(msg["content"], str):
-                    msg["content"] = msg["content"].encode('utf-8', errors='ignore').decode('utf-8')
-            
-            # 设置自定义headers
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.client.api_key}"
-            }
-            
             # 调用API进行分析
             max_retries = 3
             retry_count = 0
@@ -94,8 +83,7 @@ class LLMInterface:
                         messages=messages,
                         temperature=0.7,
                         max_tokens=2000,
-                        stream=False,
-                        extra_headers=headers
+                        stream=False
                     )
                     
                     # 获取回复内容
@@ -216,7 +204,7 @@ class LLMInterface:
             股票名称：{name}
             
             请直接返回行业名称，不需要其他解释。行业分类应该是以下之一：
-            科技、医药、新能源、消费、金融、地产、周期农业、军工、传媒
+            科技、医药、新能源、消费、金融、地���、周期、农业、军工、传媒
             """
             
             response = self.client.chat.completions.create(
