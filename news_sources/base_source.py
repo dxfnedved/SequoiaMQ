@@ -6,9 +6,9 @@ from typing import List, Dict, Optional
 class NewsSource(ABC):
     """新闻源基类"""
     
-    def __init__(self, logger=None):
+    def __init__(self, name: str = None, logger=None):
         self.logger = logger
-        self.name = self.__class__.__name__
+        self.name = name or self.__class__.__name__
         
     @abstractmethod
     def fetch_news(self, limit: int = 100) -> List[Dict]:
@@ -45,7 +45,7 @@ class NewsSource(ABC):
             # 标准化时间格式
             df['time'] = pd.to_datetime(df['time'])
             
-            # 添加来源标识
+            # 添加���源标识
             df['source'] = self.name
             
             # 删除空内容

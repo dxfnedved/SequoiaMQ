@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import traceback
 import time
 import re
+import httpx
 
 from typing import Optional, Dict, Any
 from colorama import Fore, Style
@@ -27,9 +28,17 @@ class LLMInterface:
         if not api_key:
             raise ValueError("LLM_API_KEY environment variable is not set")
             
+        # 配置客户端，确保正确处理UTF-8编码
         self.client = OpenAI(
             api_key=api_key,
-            base_url=base_url
+            base_url=base_url,
+            http_client=httpx.Client(
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                },
+                transport=httpx.HTTPTransport(retries=3)
+            )
         )
         
         self.conversation_history = []
@@ -37,39 +46,20 @@ class LLMInterface:
     def analyze_with_cot(self, prompt: str, context: str) -> Optional[Dict[str, Any]]:
         """使用Chain of Thought方法进行分析"""
         try:
-            # 添加思维链提示
-            cot_prompt = f"""
-            {context}
+            # 使用英文系统提示，避免编码问题
+            system_prompt = "You are a professional financial analyst. Please analyze the following information and provide a response in valid JSON format."
             
-            请按照以下步骤进行分析：
-            1. 仔细阅读并理解所提供的信息
-            2. 列出关键信息点和重要发现
-            3. 分析这些信息之间的关联性
-            4. 推理可能的影响和结果
-            5. 得出结论并提供建议
-            
-            请一步步思考并说明推理过程。
-            请确保返回标准的JSON格式数据。
-            
-            {prompt}
-            """
-            
-            # 将当前对话添加到历史记录
+            # 构建消息，确保使用UTF-8编码
             messages = [
                 {
                     "role": "system",
-                    "content": "你是一个专业的金融分析师，擅长通过逐步推理来分析市场信息。请确保返回的结果是有效的JSON格式。"
+                    "content": system_prompt
+                },
+                {
+                    "role": "user",
+                    "content": f"{context}\n\n{prompt}"
                 }
             ]
-            
-            # 添加历史对话
-            messages.extend(self.conversation_history)
-            
-            # 添加当前提示
-            messages.append({
-                "role": "user",
-                "content": cot_prompt
-            })
             
             # 调用API进行分析
             max_retries = 3
@@ -82,27 +72,15 @@ class LLMInterface:
                         model="deepseek-chat",
                         messages=messages,
                         temperature=0.7,
-                        max_tokens=2000,
-                        stream=False
+                        max_tokens=2000
                     )
                     
                     # 获取回复内容
                     result = response.choices[0].message.content
                     self.logger.info("收到API响应")
                     
-                    # 将助手的回复添加到历史记录
-                    self.conversation_history.append({
-                        "role": "assistant",
-                        "content": result
-                    })
-                    
                     # 尝试解析JSON结果
                     try:
-                        # 确保结果是UTF-8编码
-                        if isinstance(result, str):
-                            result = result.encode('utf-8', errors='ignore').decode('utf-8')
-                            self.logger.debug(f"UTF-8编码后的结果长度: {len(result)}")
-                        
                         # 清理JSON字符串
                         result = self._clean_json_string(result)
                         
@@ -116,7 +94,7 @@ class LLMInterface:
                         retry_count += 1
                         if retry_count < max_retries:
                             self.logger.info(f"正在重试 ({retry_count}/{max_retries})...")
-                            time.sleep(2)  # 重试前等待
+                            time.sleep(2)
                         continue
                         
                 except Exception as e:
@@ -204,7 +182,7 @@ class LLMInterface:
             股票名称：{name}
             
             请直接返回行业名称，不需要其他解释。行业分类应该是以下之一：
-            科技、医药、新能源、消费、金融、地���、周期、农业、军工、传媒
+            科技、医药、能源、消费、金融、地产、周期、农业、军工、传媒
             """
             
             response = self.client.chat.completions.create(

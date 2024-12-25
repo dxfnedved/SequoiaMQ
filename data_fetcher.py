@@ -227,6 +227,23 @@ class DataFetcher:
             cache_time = datetime.fromtimestamp(os.path.getmtime(cache_file))
             current_time = datetime.now()
             
+            # 读取缓存数据以检查最新日期
+            try:
+                cached_data = pd.read_csv(cache_file)
+                if 'date' in cached_data.columns:
+                    cached_data['date'] = pd.to_datetime(cached_data['date'])
+                    latest_data_date = cached_data['date'].max()
+                    
+                    # 如果最新数据不是今天或昨天的，需要更新
+                    latest_date = latest_data_date.date()
+                    today = current_time.date()
+                    if latest_date < today:
+                        self.logger.info(f"股票 {code} 的数据不是最新的（最新日期：{latest_date}），需要更新")
+                        return True
+            except Exception as e:
+                self.logger.warning(f"读取缓存文件失败 {code}: {str(e)}")
+                return True
+            
             # 检查是否是工作日
             is_trading_day = is_weekday()
             
@@ -245,14 +262,16 @@ class DataFetcher:
                     cache_hour = cache_time.hour
                     return cache_hour < 15
             else:
-                # 非交易日，使用最近一个交易日的收盘数据
-                # 如果缓存是在最近一个交易日15点之后的数据，不需要更新
+                # 非交易日，检查是否有最新的收盘数据
                 last_trading_day = self._get_last_trading_day()
                 if last_trading_day:
                     cache_date = cache_time.date()
-                    if cache_date == last_trading_day and cache_time.hour >= 15:
-                        return False
-                return True
+                    if cache_date < last_trading_day:
+                        self.logger.info(f"股票 {code} 的数据不是最近交易日的数据，需要更新")
+                        return True
+                    elif cache_date == last_trading_day and cache_time.hour < 15:
+                        return True
+                return False
                 
         except Exception as e:
             self.logger.error(f"检查数据更新状态时出错 {code}: {str(e)}")

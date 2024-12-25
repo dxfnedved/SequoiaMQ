@@ -4,8 +4,9 @@ from datetime import datetime
 import logging
 from .tonghuashun_source import TonghuashunSource
 from .eastmoney_source import EastmoneySource
-from .xueqiu_source import XueqiuSource
-from .tdx_source import TDXSource
+from .sse_source import SSESource
+from .szse_source import SZSESource
+from .sina_source import SinaSource
 
 class NewsAggregator:
     """新闻聚合器"""
@@ -13,10 +14,10 @@ class NewsAggregator:
     def __init__(self, logger=None):
         self.logger = logger or logging.getLogger(__name__)
         self.sources = [
-            TonghuashunSource(logger),
-            EastmoneySource(logger),
-            XueqiuSource(logger),
-            TDXSource(logger)
+            # SSESource(logger),      # 上交所新闻
+            SZSESource(logger),     # 深交所新闻
+            SinaSource(logger),     # 新浪财经新闻
+            EastmoneySource(logger) # 东方财富新闻
         ]
         
     def get_news(self, limit_per_source: int = 25) -> pd.DataFrame:
@@ -33,6 +34,7 @@ class NewsAggregator:
                         news_df = source.standardize_news(news_list)
                         if not news_df.empty:
                             all_news.append(news_df)
+                            self.logger.info(f"从 {source.name} 获取到 {len(news_df)} 条新闻")
                             
                 except Exception as e:
                     self.logger.error(f"从 {source.name} 获取新闻失败: {str(e)}")
