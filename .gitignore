@@ -15,9 +15,10 @@ results
 
 cache
 *.json
-.env
+*.env
 *.json
 summary
 *.xlsx
 .ipynb_checkpoints
 .pytest_cache
+*.example
