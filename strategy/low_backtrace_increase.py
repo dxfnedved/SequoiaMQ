@@ -6,7 +6,7 @@ import talib as ta
 from strategy.base import BaseStrategy
 
 class LowBacktraceIncreaseStrategy(BaseStrategy):
-    """低回撤上涨策略"""
+    """低回撤稳步上涨策略"""
     def __init__(self, logger_manager=None):
         super().__init__(logger_manager)
         self.name = "LowBacktraceIncreaseStrategy"

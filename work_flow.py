@@ -13,7 +13,7 @@ import traceback
 from tqdm import tqdm
 from colorama import init, Fore, Style
 import utils
-from settings import ANALYSIS_CACHE_DIR
+from settings import ANALYSIS_CACHE_DIR,SUMMARY_DIR
 
 # 初始化colorama，确保在Windows上也能正常显示颜色
 init(autoreset=True)
@@ -93,7 +93,8 @@ class WorkFlow:
         self.strategy_analyzer = StrategyAnalyzer(logger_manager=self.logger_manager)
         self.analysis_results = []
         self.stock_names = utils.get_stock_name_dict()
-        
+        self.summary_dir = SUMMARY_DIR
+
         # 性能优化参数
         self.max_workers = min(64, (os.cpu_count() or 1) * 8)  # 线程数
         self.batch_size = 200  # 批处理大小
@@ -162,7 +163,7 @@ class WorkFlow:
             buy_signals = sum(1 for r in self.analysis_results if r and r.get('buy_signals', 0) > 0)
             sell_signals = sum(1 for r in self.analysis_results if r and r.get('sell_signals', 0) > 0)
             
-            # 创建��总数据
+            # 创建汇总数据
             summary = {
                 'timestamp': timestamp,
                 'total_stocks': total_stocks,
@@ -375,8 +376,8 @@ class WorkFlow:
             self.logger.info(f"获取到 {len(stock_list)} 只股票")
             
             # 执行全局新闻分析（只执行一次）
-            if not self.strategy_analyzer.perform_news_analysis():
-                self.logger.warning("全局新闻分析未能完成，将继续执行其他策略")
+            # if not self.strategy_analyzer.perform_news_analysis():
+            #     self.logger.warning("全局新闻分析未能完成，将继续执行其他策略")
             
             # 分析股票
             results = self.analyze_stocks(stock_list)

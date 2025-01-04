@@ -16,6 +16,7 @@ STOCK_DATA_CACHE_DIR = os.path.join(BASE_CACHE_DIR, 'stock_data')
 STOCK_LIST_CACHE_DIR = os.path.join(BASE_CACHE_DIR, 'stock_list')
 ANALYSIS_CACHE_DIR = os.path.join(BASE_CACHE_DIR, 'analysis')
 NEWS_CACHE_DIR = os.path.join(BASE_CACHE_DIR, 'news')
+SUMMARY_DIR = os.path.join(BASE_CACHE_DIR, 'summary')
 
 # Cache settings
 CACHE_DURATION = 24 * 60 * 60  # 24 hours in seconds
