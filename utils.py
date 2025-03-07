@@ -154,12 +154,10 @@ A股列表获取成功:
     return []
 
 def format_code(code):
-    """式化股票代码（添加市场标识）"""
-    if code.startswith(('000', '001', '002', '003', '300')):
-        return f"0.{code}"  # 深市
-    elif code.startswith(('600', '601', '603', '605')):
-        return f"1.{code}"  # 沪市
-    return code
+    """格式化股票代码（添加市场标识）"""
+    # 确保code是字符串类型
+    code = str(code).zfill(6)
+    return code  # akshare直接使用6位数字代码即可
 
 def is_market_open():
     """检查当前是否是交易时间"""

@@ -178,7 +178,7 @@ class DataFetcher:
                 
             # 获取数据
             self.logger.info(f"从网络获取数据: {code}")
-            df = ak.stock_zh_a_hist(symbol=code,start_date=start_date, end_date=end_date, adjust="qfq")
+            df = ak.stock_zh_a_hist(symbol=code, start_date=start_date, end_date=end_date, adjust="qfq")
             
             if df is None or df.empty:
                 if retries < self.max_retries:
@@ -213,7 +213,6 @@ class DataFetcher:
         except Exception as e:
             self.logger.error(f"获取股票 {code} 数据时出错: {str(e)}")
             if retries < self.max_retries:
-                self.logger.warning(f"尝试重新获取股票 {code} 数据 (重试 {retries + 1}/{self.max_retries})")
                 return self._fetch_stock_data(code, retries + 1)
             return None
             
@@ -305,13 +304,13 @@ class DataFetcher:
         try:
             # Extract stock code and name
             if isinstance(stock, dict):
-                code = stock['code']
+                code = str(stock['code']).zfill(6)
                 name = stock.get('name')
             elif isinstance(stock, (list, tuple)):
-                code = stock[0]
+                code = str(stock[0]).zfill(6)
                 name = stock[1] if len(stock) > 1 else None
             else:
-                code = str(stock)
+                code = str(stock).zfill(6)
                 name = None
             
             self.logger.info(f"获取股票数据: {code}")

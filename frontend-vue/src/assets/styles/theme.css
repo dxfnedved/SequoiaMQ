@@ -1,0 +1,12 @@
+/**
+ * SequoiaMQ 主题样式
+ * 参考 nodcoding.com 的设计风格
+ */
+
+:root {
+  /* 主色调 */
+  --primary: #4361ee;
+  --primary-dark: #3f37c9;
+  --primary-light: #4895ef;
+  --accent: #4cc9f0;
+}

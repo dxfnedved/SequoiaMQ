@@ -1,0 +1,99 @@
+// 全局SCSS变量定义
+
+// 颜色变量
+$primary-color: #1890ff;
+$success-color: #52c41a;
+$warning-color: #faad14;
+$error-color: #f5222d;
+$info-color: #1890ff;
+
+// 背景颜色
+$background-color-base: #f0f2f5;
+$background-color-light: #fafafa;
+$background-color-dark: #141414;
+
+// 文本颜色
+$text-color: rgba(0, 0, 0, 0.85);
+$text-color-secondary: rgba(0, 0, 0, 0.45);
+$text-color-inverse: #fff;
+
+// 边框颜色
+$border-color-base: #d9d9d9;
+$border-color-split: #f0f0f0;
+
+// 布局尺寸
+$header-height: 64px;
+$sidebar-width: 256px;
+$content-padding: 24px;
+
+// 响应式断点
+$screen-xs: 480px;
+$screen-sm: 576px;
+$screen-md: 768px;
+$screen-lg: 992px;
+$screen-xl: 1200px;
+$screen-xxl: 1600px;
+
+// 主题颜色
+$buy-signal-color: #67C23A;  // 买入信号 - 绿色
+$sell-signal-color: #F56C6C; // 卖出信号 - 红色
+
+// 涨跌颜色 (中国股市风格)
+$rise-color: #F56C6C; // 上涨 - 红色
+$fall-color: #67C23A; // 下跌 - 绿色
+
+// 文本颜色
+$text-primary: #303133; // 主要文本
+$text-regular: #606266; // 常规文本
+$text-secondary: #909399; // 次要文本
+$text-placeholder: #C0C4CC; // 占位文本
+
+// 边框颜色
+$border-base: #DCDFE6; // 基础边框颜色
+$border-light: #E4E7ED; // 浅色边框
+$border-lighter: #EBEEF5; // 更浅边框
+$border-extra-light: #F2F6FC; // 特浅边框
+
+// 背景颜色
+$background-base: #F5F7FA; // 基础背景色
+$background-white: #FFFFFF; // 浅背景色
+
+// 字体大小
+$font-size-extra-large: 20px; // 特大字体
+$font-size-large: 18px;       // 大字体
+$font-size-medium: 16px;      // 中等字体
+$font-size-base: 14px;        // 基础字体
+$font-size-small: 13px;       // 小字体
+$font-size-extra-small: 12px; // 特小字体
+
+// 断点
+$xs: 480px;  // 超小屏幕
+$sm: 768px;  // 小屏幕
+$md: 992px;  // 中等屏幕
+$lg: 1200px; // 大屏幕
+$xl: 1600px; // 超大屏幕
+
+// 边距
+$spacing-mini: 4px;
+$spacing-small: 8px;
+$spacing-base: 12px;
+$spacing-medium: 16px;
+$spacing-large: 20px;
+$spacing-extra-large: 24px;
+
+// 边框圆角
+$border-radius-small: 2px;
+$border-radius-base: 4px;
+$border-radius-medium: 6px;
+$border-radius-large: 8px;
+$border-radius-round: 20px;
+$border-radius-circle: 50%;
+
+// 阴影
+$box-shadow-light: 0 2px 4px rgba(0, 0, 0, .12), 0 0 6px rgba(0, 0, 0, .04);
+$box-shadow-base: 0 2px 12px 0 rgba(0, 0, 0, .1);
+$box-shadow-dark: 0 2px 16px 0 rgba(0, 0, 0, .18);
+
+// 过渡
+$transition-duration: 0.3s;
+$transition-timing-function: ease-in-out; 

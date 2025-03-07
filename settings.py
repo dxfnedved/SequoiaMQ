@@ -6,6 +6,8 @@ from pathlib import Path
 import logging
 import traceback
 from datetime import datetime
+import yaml
+
 logger = LoggerManager().get_logger("settings")
 
 # Base directories
@@ -58,7 +60,7 @@ def init():
                 }
             }
             
-            # 创���配置文件
+            # 创建配置文件
             with open(config_file, 'w', encoding='utf-8') as f:
                 json.dump(default_config, f, indent=4, ensure_ascii=False)
                 
@@ -93,3 +95,54 @@ def get_config():
     if not 'config' in globals():
         config = init()
     return config
+
+def load_yaml_config(config_path='config.yaml'):
+    """
+    从YAML文件加载配置
+    
+    参数:
+        config_path: YAML配置文件路径
+        
+    返回:
+        dict: 配置字典
+    """
+    try:
+        if not os.path.exists(config_path):
+            print(f"警告: 配置文件 {config_path} 不存在，使用默认配置")
+            return {}
+        
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+        
+        return config or {}
+    except Exception as e:
+        print(f"加载配置文件出错: {str(e)}")
+        return {}
+
+# 加载YAML配置
+yaml_config = load_yaml_config()
+
+# LSTM相关配置，优先使用YAML配置
+LSTM_HISTORY_DAYS = yaml_config.get('lstm', {}).get('data', {}).get('history_days', 1825)
+LSTM_CACHE_DAYS = yaml_config.get('lstm', {}).get('data', {}).get('cache_days', 3)
+LSTM_BATCH_SIZE = yaml_config.get('lstm', {}).get('data', {}).get('batch_size', 50)
+
+LSTM_TIME_STEP = yaml_config.get('lstm', {}).get('model', {}).get('time_step', 60)
+LSTM_EPOCHS = yaml_config.get('lstm', {}).get('model', {}).get('epochs', 20)
+LSTM_MODEL_BATCH_SIZE = yaml_config.get('lstm', {}).get('model', {}).get('batch_size', 32)
+LSTM_FUTURE_DAYS = yaml_config.get('lstm', {}).get('model', {}).get('future_days', 7)
+LSTM_MODEL_TYPE = yaml_config.get('lstm', {}).get('model', {}).get('model_type', 'lstm_with_thoughts')
+LSTM_THOUGHT_DIM = yaml_config.get('lstm', {}).get('model', {}).get('thought_dim', 32)
+LSTM_NUM_THOUGHTS = yaml_config.get('lstm', {}).get('model', {}).get('num_thoughts', 5)
+LSTM_NUM_HEADS = yaml_config.get('lstm', {}).get('model', {}).get('num_heads', 4)
+
+LSTM_MAX_WORKERS = yaml_config.get('lstm', {}).get('parallel', {}).get('max_workers', 4)
+LSTM_MEMORY_LIMIT = yaml_config.get('lstm', {}).get('parallel', {}).get('memory_limit', 75)
+
+# 系统性能配置
+PARALLEL_ANALYSIS = yaml_config.get('performance', {}).get('parallel_analysis', True)
+MAX_WORKERS = yaml_config.get('performance', {}).get('max_workers', 8)
+BATCH_SIZE = yaml_config.get('performance', {}).get('batch_size', 50)
+MEMORY_LIMIT = yaml_config.get('performance', {}).get('memory_limit', 80)
+CACHE_ENABLE = yaml_config.get('performance', {}).get('cache_enable', True)
+CACHE_DAYS = yaml_config.get('performance', {}).get('cache_days', 1)

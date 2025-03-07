@@ -1,0 +1,57 @@
+/**
+ * 自选股API
+ * 封装自选股相关的API请求
+ */
+import { get, post, put, del } from './request'
+
+/**
+ * 获取自选股列表
+ * @returns {Promise}
+ */
+export function fetchWatchlist() {
+  return get('/api/watchlist')
+}
+
+/**
+ * 获取自选股详细信息（含实时价格）
+ * @returns {Promise}
+ */
+export function fetchWatchlistDetails() {
+  return get('/api/watchlist/details')
+}
+
+/**
+ * 添加股票到自选股
+ * @param {Object} stock - 要添加的股票信息
+ * @returns {Promise}
+ */
+export function addToWatchlist(stock) {
+  return post('/api/watchlist', stock)
+}
+
+/**
+ * 从自选股移除股票
+ * @param {String} code - 要移除的股票代码
+ * @returns {Promise}
+ */
+export function removeFromWatchlist(code) {
+  return del(/api/watchlist/)
+}
+
+/**
+ * 更新自选股项目
+ * @param {String} code - 要更新的股票代码
+ * @param {Object} data - 更新数据
+ * @returns {Promise}
+ */
+export function updateWatchlistItem(code, data) {
+  return put(/api/watchlist/, data)
+}
+
+/**
+ * 清空自选股列表
+ * @returns {Promise}
+ */
+export function clearWatchlist() {
+  return del('/api/watchlist')
+} 

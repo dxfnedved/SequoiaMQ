@@ -3,6 +3,9 @@ import os
 
 block_cipher = None
 
+# 获取当前目录
+current_dir = os.getcwd()
+
 # 获取当前目录下的所有Python文件
 strategy_files = [(f"strategy/{f}", f"strategy/") for f in os.listdir("strategy") if f.endswith('.py')]
 news_sources_files = [(f"news_sources/{f}", f"news_sources/") for f in os.listdir("news_sources") if f.endswith('.py')]
@@ -22,7 +25,7 @@ datas = [
 
 a = Analysis(
     ['launcher.py'],
-    pathex=[os.path.abspath(os.path.dirname(__file__))],
+    pathex=[current_dir],
     binaries=[],
     datas=datas,
     hiddenimports=[

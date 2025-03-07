@@ -22,3 +22,11 @@ summary
 .ipynb_checkpoints
 .pytest_cache
 *.example
+node_modules
+*.log
+*.log.*
+*.log.*.*
+*.log.*.*.*
+*.log.*.*.*.*
+*.log.*.*.*.*.*
+*.log.*.*.*.*.*.*

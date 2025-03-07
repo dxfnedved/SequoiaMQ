@@ -10,43 +10,24 @@ class LowBacktraceIncreaseStrategy(BaseStrategy):
     def __init__(self, logger_manager=None):
         super().__init__(logger_manager)
         self.name = "LowBacktraceIncreaseStrategy"
+        self.description = "低回撤稳步上涨策略 - 寻找稳定增长且回撤较小的股票"
+        self.version = "2.0.0"
+        
+        # 策略参数
         self.window_size = 20  # 观察窗口
         self.ma_window = 20  # 均线周期
         self.min_increase = 0.1  # 最小涨幅
         self.max_backtrace = 0.05  # 最大回撤
+        self.min_data_length = self.window_size + 10  # 最小数据长度
         
-    def calculate_increase(self, data):
-        """计算涨幅"""
+    def _analyze_impl(self, data):
+        """实现低回撤上涨策略分析"""
         try:
-            close = data['close']
-            
-            # 计算历史最高价
-            high_price = close.expanding().max()
-            
-            # 计算回撤
-            backtrace = (high_price - close) / high_price
-            
-            # 计算总涨幅
-            total_increase = close.iloc[-1] / close.iloc[0] - 1
-            
-            return total_increase, backtrace.max()
-            
-        except Exception as e:
-            self.logger.error(f"计算涨幅失败: {str(e)}")
-            return None, None
-            
-    def analyze(self, data):
-        """分析数据"""
-        try:
-            if len(data) < self.window_size:
-                return None
-                
             # 获取最近window_size天的数据
             recent_data = data.tail(self.window_size)
             
             # 计算涨幅和回撤
-            close = data['close']
-            increase, max_backtrace = self.calculate_increase(recent_data)
+            increase, max_backtrace = self._calculate_increase(recent_data)
             
             if increase is None or max_backtrace is None:
                 return None
@@ -57,6 +38,10 @@ class LowBacktraceIncreaseStrategy(BaseStrategy):
             # 获取最新数据
             latest_close = data['close'].iloc[-1]
             latest_ma = ma.iloc[-1]
+            
+            # 计算买入卖出强度
+            buy_strength = max(0, min(1, (increase - self.min_increase) / self.min_increase))
+            sell_strength = max(0, min(1, (max_backtrace - self.max_backtrace) / self.max_backtrace))
             
             # 判断信号
             if (increase >= self.min_increase and
@@ -72,35 +57,72 @@ class LowBacktraceIncreaseStrategy(BaseStrategy):
                 'increase': increase,
                 'max_backtrace': max_backtrace,
                 'ma': latest_ma,
-                'signal': signal
+                'signal': signal,
+                'buy_strength': buy_strength,
+                'sell_strength': sell_strength,
+                'factors': {
+                    'increase': increase,
+                    'max_backtrace': max_backtrace,
+                    'price_to_ma': latest_close / latest_ma - 1
+                }
             }
             
         except Exception as e:
             self.logger.error(f"低回撤上涨策略分析失败: {str(e)}")
             return None
             
-    def get_signals(self, data):
-        """获取买卖信号"""
+    def _calculate_increase(self, data):
+        """计算涨幅和最大回撤"""
         try:
-            if len(data) < self.window_size:
-                return []
-                
-            signals = []
-            result = self.analyze(data)
+            # 使用缓存键
+            cache_key = (data.index[-1].strftime('%Y%m%d'), len(data))
             
-            if result and result['signal'] != "无":
-                signals.append({
-                    'date': data.index[-1],
-                    'type': result['signal'],
-                    'strategy': self.name,
-                    'price': data['close'].iloc[-1],
-                    'increase': result['increase'],
-                    'max_backtrace': result['max_backtrace'],
-                    'ma': result['ma']
-                })
+            # 尝试从缓存获取
+            cached_result = self._calculate_indicator('increase_backtrace', cache_key)
+            if cached_result is not None:
+                return cached_result
                 
-            return signals
+            close = data['close']
+            
+            # 计算历史最高价
+            high_price = close.expanding().max()
+            
+            # 计算回撤
+            backtrace = (high_price - close) / high_price
+            
+            # 计算总涨幅
+            total_increase = close.iloc[-1] / close.iloc[0] - 1
+            
+            result = (total_increase, backtrace.max())
+            
+            # 更新缓存
+            self._indicator_cache[(
+                'increase_backtrace', 
+                cache_key, 
+                frozenset()
+            )] = result
+            
+            return result
             
         except Exception as e:
-            self.logger.error(f"获取低回撤上涨策略信号失败: {str(e)}")
-            return []
+            self.logger.error(f"计算涨幅失败: {str(e)}")
+            return None, None
+            
+    def _extract_signals(self, data, result):
+        """从分析结果中提取信号"""
+        signals = []
+        
+        if result and result['signal'] != "无":
+            signals.append({
+                'date': data.index[-1],
+                'type': result['signal'],
+                'strategy': self.name,
+                'price': data['close'].iloc[-1],
+                'increase': result['increase'],
+                'max_backtrace': result['max_backtrace'],
+                'ma': result['ma'],
+                'strength': result['buy_strength'] if result['signal'] == "买入" else result['sell_strength'],
+                'factors': result.get('factors', {})
+            })
+                
+        return signals

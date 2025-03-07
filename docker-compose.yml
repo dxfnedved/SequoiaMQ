@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # 后端API服务
+  api:
+    build:
+      context: ./api_server
+      dockerfile: Dockerfile
+    container_name: sequoiamq-api
+    restart: always
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./api_server:/app
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - FLASK_ENV=production
+      - FLASK_APP=main.py
+      - DATABASE_URL=sqlite:///data/sequoiamq.db
+    networks:
+      - sequoiamq-network
+
+  # 前端服务
+  frontend:
+    build:
+      context: ./frontend-vue
+      dockerfile: Dockerfile
+    container_name: sequoiamq-frontend
+    restart: always
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+    networks:
+      - sequoiamq-network
+
+# 网络配置
+networks:
+  sequoiamq-network:
+    driver: bridge 
